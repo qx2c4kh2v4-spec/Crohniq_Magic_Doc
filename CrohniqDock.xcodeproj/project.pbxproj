@@ -1,0 +1,413 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		031335DFD4CB8F3C03C71DA8 /* DockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFF06EFA8605BD8E9798FB8 /* DockPanel.swift */; };
+		1B042781338B4C89348FBD70 /* HoverLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8597BAEDDB76DC5095BAF7 /* HoverLists.swift */; };
+		26A0D881C08A42AE53A8E0E4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0101C445872FFEDCB416F747 /* SettingsView.swift */; };
+		29B85473DE7C3745928B508D /* Gallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D1F231FAED3EB7583A5582 /* Gallery.swift */; };
+		31DBD80E6C9363B3712045DB /* UtilityWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2D1DB90C7B4EA53CDA64FA /* UtilityWidgets.swift */; };
+		332888E1FECF85568946A7E4 /* AppWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22578C4A33F285D38894C557 /* AppWidgets.swift */; };
+		3C94AF079E5912164D207AD8 /* QuitAppsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E12ACE9678E89F3336BBA0E6 /* QuitAppsWidget.swift */; };
+		4AA4A668EA32F5B12342E356 /* SystemWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC5C930CB6EE48C51ECEC53 /* SystemWidgets.swift */; };
+		535229E62868CCC440F018D9 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45CE8E11D71391F582AA3351 /* App.swift */; };
+		632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */; };
+		7C227B986DAA3D63EF621C7F /* DockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F9F378EC332D7CADF2497B /* DockView.swift */; };
+		908F1AB7D3BB410BD0F681BF /* HoverUnroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B08E70115B4613534F46521 /* HoverUnroll.swift */; };
+		9C29501B5809C478CF64FC3E /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BFBC845FC638B78B0DC11C0 /* Services.swift */; };
+		AA48A04C45C2F7E6D498E547 /* ProductivityWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D561D557DA3EA7AE852261 /* ProductivityWidgets.swift */; };
+		B730ACB20AB4D5EF92EAE023 /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62522C331928E81EB498650C /* LauncherWidget.swift */; };
+		C188C4831844B78B3F969EEA /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A6240DE39C96220752AB753 /* Model.swift */; };
+		D3B473FD47DA8B96514C9108 /* NexusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A27DCA15116D6637EA85F06 /* NexusWidget.swift */; };
+		DE5282FF7C060C4C592363CD /* BookmarksWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC041A333725545DE5CEBF20 /* BookmarksWidget.swift */; };
+		F617FC6F2CB3408ACA6BD1B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4D81D1BE6592FCA4BFCA95C5 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0101C445872FFEDCB416F747 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		0CC5C930CB6EE48C51ECEC53 /* SystemWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWidgets.swift; sourceTree = "<group>"; };
+		22578C4A33F285D38894C557 /* AppWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppWidgets.swift; sourceTree = "<group>"; };
+		2B08E70115B4613534F46521 /* HoverUnroll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverUnroll.swift; sourceTree = "<group>"; };
+		3A27DCA15116D6637EA85F06 /* NexusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusWidget.swift; sourceTree = "<group>"; };
+		3F8597BAEDDB76DC5095BAF7 /* HoverLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverLists.swift; sourceTree = "<group>"; };
+		45CE8E11D71391F582AA3351 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		4D81D1BE6592FCA4BFCA95C5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		62522C331928E81EB498650C /* LauncherWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherWidget.swift; sourceTree = "<group>"; };
+		7B2D1DB90C7B4EA53CDA64FA /* UtilityWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityWidgets.swift; sourceTree = "<group>"; };
+		8A6240DE39C96220752AB753 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
+		8BFBC845FC638B78B0DC11C0 /* Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services.swift; sourceTree = "<group>"; };
+		9A70E9B71AD4A15705B1191F /* CrohniqDock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrohniqDock.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5F9F378EC332D7CADF2497B /* DockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockView.swift; sourceTree = "<group>"; };
+		BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspaces.swift; sourceTree = "<group>"; };
+		CAFF06EFA8605BD8E9798FB8 /* DockPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPanel.swift; sourceTree = "<group>"; };
+		E12ACE9678E89F3336BBA0E6 /* QuitAppsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuitAppsWidget.swift; sourceTree = "<group>"; };
+		E1D561D557DA3EA7AE852261 /* ProductivityWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductivityWidgets.swift; sourceTree = "<group>"; };
+		F9D1F231FAED3EB7583A5582 /* Gallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gallery.swift; sourceTree = "<group>"; };
+		FC041A333725545DE5CEBF20 /* BookmarksWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarksWidget.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		2A752932199D6E82047EEFED /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9A70E9B71AD4A15705B1191F /* CrohniqDock.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3767A5DC56BB9A0E2A35B4B7 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				8BFBC845FC638B78B0DC11C0 /* Services.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		5CA16E0CC355EAC668E6F0DE /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				4D81D1BE6592FCA4BFCA95C5 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		97C0584D3848F71A39F3DF42 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				45CE8E11D71391F582AA3351 /* App.swift */,
+				CAFF06EFA8605BD8E9798FB8 /* DockPanel.swift */,
+				A5F9F378EC332D7CADF2497B /* DockView.swift */,
+				F9D1F231FAED3EB7583A5582 /* Gallery.swift */,
+				2B08E70115B4613534F46521 /* HoverUnroll.swift */,
+				8A6240DE39C96220752AB753 /* Model.swift */,
+				0101C445872FFEDCB416F747 /* SettingsView.swift */,
+				BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		BA83BB74F2D921EFF9169CC0 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				97C0584D3848F71A39F3DF42 /* Core */,
+				3767A5DC56BB9A0E2A35B4B7 /* Services */,
+				F0B1850C57E641BF6CE57874 /* Widgets */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		C038FF17C7D8F1B07138B0FA = {
+			isa = PBXGroup;
+			children = (
+				5CA16E0CC355EAC668E6F0DE /* Resources */,
+				BA83BB74F2D921EFF9169CC0 /* Sources */,
+				2A752932199D6E82047EEFED /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F0B1850C57E641BF6CE57874 /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				22578C4A33F285D38894C557 /* AppWidgets.swift */,
+				FC041A333725545DE5CEBF20 /* BookmarksWidget.swift */,
+				3F8597BAEDDB76DC5095BAF7 /* HoverLists.swift */,
+				62522C331928E81EB498650C /* LauncherWidget.swift */,
+				3A27DCA15116D6637EA85F06 /* NexusWidget.swift */,
+				E1D561D557DA3EA7AE852261 /* ProductivityWidgets.swift */,
+				E12ACE9678E89F3336BBA0E6 /* QuitAppsWidget.swift */,
+				0CC5C930CB6EE48C51ECEC53 /* SystemWidgets.swift */,
+				7B2D1DB90C7B4EA53CDA64FA /* UtilityWidgets.swift */,
+			);
+			path = Widgets;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D92FAB0DBEF3B3094F761EC2 /* CrohniqDock */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A81138869713805922CC6BB1 /* Build configuration list for PBXNativeTarget "CrohniqDock" */;
+			buildPhases = (
+				BEFCE0941990A4105F80DD9A /* Sources */,
+				05FCDF5F7836DB3B995E4C4C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CrohniqDock;
+			packageProductDependencies = (
+			);
+			productName = CrohniqDock;
+			productReference = 9A70E9B71AD4A15705B1191F /* CrohniqDock.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7C832598F31AFAB1745C55A2 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					D92FAB0DBEF3B3094F761EC2 = {
+						DevelopmentTeam = FW84ZL64CN;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 426C025B77C5115BCE6C39EE /* Build configuration list for PBXProject "CrohniqDock" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = C038FF17C7D8F1B07138B0FA;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 2A752932199D6E82047EEFED /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D92FAB0DBEF3B3094F761EC2 /* CrohniqDock */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		05FCDF5F7836DB3B995E4C4C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F617FC6F2CB3408ACA6BD1B3 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BEFCE0941990A4105F80DD9A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				535229E62868CCC440F018D9 /* App.swift in Sources */,
+				332888E1FECF85568946A7E4 /* AppWidgets.swift in Sources */,
+				DE5282FF7C060C4C592363CD /* BookmarksWidget.swift in Sources */,
+				031335DFD4CB8F3C03C71DA8 /* DockPanel.swift in Sources */,
+				7C227B986DAA3D63EF621C7F /* DockView.swift in Sources */,
+				29B85473DE7C3745928B508D /* Gallery.swift in Sources */,
+				1B042781338B4C89348FBD70 /* HoverLists.swift in Sources */,
+				908F1AB7D3BB410BD0F681BF /* HoverUnroll.swift in Sources */,
+				B730ACB20AB4D5EF92EAE023 /* LauncherWidget.swift in Sources */,
+				C188C4831844B78B3F969EEA /* Model.swift in Sources */,
+				D3B473FD47DA8B96514C9108 /* NexusWidget.swift in Sources */,
+				AA48A04C45C2F7E6D498E547 /* ProductivityWidgets.swift in Sources */,
+				3C94AF079E5912164D207AD8 /* QuitAppsWidget.swift in Sources */,
+				9C29501B5809C478CF64FC3E /* Services.swift in Sources */,
+				26A0D881C08A42AE53A8E0E4 /* SettingsView.swift in Sources */,
+				4AA4A668EA32F5B12342E356 /* SystemWidgets.swift in Sources */,
+				31DBD80E6C9363B3712045DB /* UtilityWidgets.swift in Sources */,
+				632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		2BA780B90851F567FB4CA35F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 22;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = FW84ZL64CN;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		8A9F675B4D607214E78481FE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 22;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = FW84ZL64CN;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		DB01EBBDD5DDEF30A32BBDC9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CrohniqDock.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ch.crohniq.dock;
+				PRODUCT_NAME = "Crohniq Dock";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F1186F11CE8F82173B91EF77 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CrohniqDock.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ch.crohniq.dock;
+				PRODUCT_NAME = "Crohniq Dock";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		426C025B77C5115BCE6C39EE /* Build configuration list for PBXProject "CrohniqDock" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8A9F675B4D607214E78481FE /* Debug */,
+				2BA780B90851F567FB4CA35F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A81138869713805922CC6BB1 /* Build configuration list for PBXNativeTarget "CrohniqDock" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB01EBBDD5DDEF30A32BBDC9 /* Debug */,
+				F1186F11CE8F82173B91EF77 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 7C832598F31AFAB1745C55A2 /* Project object */;
+}

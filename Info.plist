@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Crohniq Dock</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Crohniq Dock</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Crohniq Dock steuert Musik, Spotify, Mail, Notizen, Kalender und Systemeinstellungen für die Widgets.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Das Kalender-Widget zeigt deine nächsten Termine.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Das Wetter-Widget zeigt das Wetter an deinem aktuellen Standort.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Das Wetter-Widget zeigt das Wetter an deinem aktuellen Standort.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Das Sprachmemo-Widget nimmt Audio auf.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Das Erinnerungen-Widget zeigt und erledigt deine Erinnerungen.</string>
+</dict>
+</plist>
