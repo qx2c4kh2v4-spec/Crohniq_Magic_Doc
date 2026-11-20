@@ -48,122 +48,194 @@ enum AppLauncher {
     }
 }
 
+
+// MARK: - Several apps per launcher
+
+extension WidgetInstance {
+    /// Apps of a launcher widget (older versions stored a single app under "app").
+    var launcherApps: [String] {
+        let list = (config["apps"] ?? "").split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if !list.isEmpty || config["apps"] != nil { return list }
+        let single = cfg("app")
+        return single.isEmpty ? [] : [single]
+    }
+
+    func pinnedFiles(for app: String) -> [String] {
+        if let v = config["files|" + app] {
+            return v.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        if app == config["app"] {
+            return cfg("files").split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        return []
+    }
+}
+
+enum LauncherStore {
+    static func setApps(_ id: UUID, _ apps: [String]) {
+        var seen = Set<String>()
+        DockStore.shared.setConfig(id, "apps", apps.filter { seen.insert($0).inserted }.joined(separator: "\n"))
+    }
+
+    static func setPinned(_ id: UUID, app: String, _ files: [String]) {
+        var seen = Set<String>()
+        DockStore.shared.setConfig(id, "files|" + app, files.filter { seen.insert($0).inserted }.joined(separator: "\n"))
+    }
+
+    static func pickApps(_ w: WidgetInstance) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = true
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        NSApp.activate(ignoringOtherApps: true)
+        if panel.runModal() == .OK { setApps(w.id, w.launcherApps + panel.urls.map(\.path)) }
+    }
+}
+
+struct AppChoice: Identifiable { let path: String; var id: String { path } }
+
 struct LauncherWidget: View {
     let w: WidgetInstance
     @Environment(\.dockScale) private var s
-    @State private var showList = false
-    @State private var recent: [URL] = []
-    @State private var selection = Set<String>()
+    @State private var picker: AppChoice?
     @State private var targeted = false
-    @State private var filter = ""
 
-    private var appPath: String { w.cfg("app") }
-    private var pinned: [String] {
-        w.cfg("files").split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-    }
-    private var appName: String {
-        appPath.isEmpty ? "App wählen" : FileManager.default.displayName(atPath: appPath).replacingOccurrences(of: ".app", with: "")
-    }
+    private var apps: [String] { w.launcherApps }
 
     var body: some View {
-        HStack(spacing: 10 * s) {
-            Group {
-                if appPath.isEmpty {
-                    Image(systemName: "plus.app").font(.system(size: 26 * s)).foregroundStyle(Theme.secondary)
-                } else {
-                    Image(nsImage: fileIcon(appPath)).resizable().frame(width: 44 * s, height: 44 * s)
-                }
-            }
-            .onTapGesture { appPath.isEmpty ? pickApp() : primaryAction() }
-            .help(pinned.isEmpty ? "\(appName) öffnen" : "\(appName) – Dateien wählen")
-
-            if w.size >= 2 {
-                VStack(alignment: .leading, spacing: 2 * s) {
-                    Text(appName).font(.system(size: 12 * s, weight: .semibold)).lineLimit(1)
-                    let rows = Array(pinned.prefix(w.size >= 3 ? 3 : 2))
-                    if rows.isEmpty {
-                        Text("Klick öffnet · ▾ zuletzt").font(.system(size: 10 * s)).foregroundStyle(Theme.secondary)
+        let list = apps
+        let capacity = w.size == 1 ? 4 : w.size * 2
+        let shown = Array(list.prefix(capacity))
+        Group {
+            if list.isEmpty {
+                Button { LauncherStore.pickApps(w) } label: {
+                    VStack(spacing: 2 * s) {
+                        Image(systemName: "plus.app").font(.system(size: 22 * s))
+                        if w.size > 1 { Text("Apps hinzufügen").font(.system(size: 10 * s)) }
                     }
-                    ForEach(rows, id: \.self) { path in
-                        Button { AppLauncher.open(app: appPath, files: [path]) } label: {
-                            HStack(spacing: 4 * s) {
-                                Image(nsImage: fileIcon(path)).resizable().frame(width: 12 * s, height: 12 * s)
-                                Text(displayName(path)).font(.system(size: 10 * s)).lineLimit(1)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.fg.opacity(0.8))
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            if !appPath.isEmpty && w.size >= 2 {
-                Button { openList() } label: {
-                    Image(systemName: "chevron.down").font(.system(size: 11 * s, weight: .bold))
-                        .frame(width: 22 * s, height: 22 * s).background(Circle().fill(Theme.tileHi))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .buttonStyle(.plain)
-                .help("Dateien & zuletzt verwendete Dokumente")
+            } else if w.size == 1 && shown.count > 1 {
+                Grid(horizontalSpacing: 4 * s, verticalSpacing: 4 * s) {
+                    GridRow { slot(shown[safe: 0], icon: 22); slot(shown[safe: 1], icon: 22) }
+                    GridRow { slot(shown[safe: 2], icon: 22); slot(shown[safe: 3], icon: 22) }
+                }
+            } else {
+                HStack(spacing: 6 * s) {
+                    ForEach(shown, id: \.self) { app in slot(app, icon: w.size == 1 ? 44 : 38) }
+                    if w.size > 1 && list.count < capacity {
+                        Button { LauncherStore.pickApps(w) } label: {
+                            Image(systemName: "plus").font(.system(size: 12 * s, weight: .bold))
+                                .frame(width: 26 * s, height: 26 * s)
+                                .background(Circle().fill(Theme.tileHi))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Weitere App hinzufügen")
+                    }
+                }
             }
         }
-        .tilePadding(s)
+        .padding(6 * s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .overlay { if targeted { RoundedRectangle(cornerRadius: 14 * s).strokeBorder(Color.accentColor, lineWidth: 2) } }
-        .onDrop(of: [.fileURL], isTargeted: $targeted, perform: handleDrop)
-        .onWidgetAction(w.id) { a in
-            if a == "pickApp" { pickApp() } else if a == "pickFiles" { pickFiles() } else if a == "list" { openList() }
+        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+            for p in providers {
+                _ = p.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url, url.pathExtension == "app" else { return }
+                    DispatchQueue.main.async { LauncherStore.setApps(w.id, w.launcherApps + [url.path]) }
+                }
+            }
+            return true
         }
-        .popover(isPresented: $showList, arrowEdge: .top) { listPopover }
+        .onWidgetAction(w.id) { a in
+            if a == "pickApp" { LauncherStore.pickApps(w) }
+            else if a.hasPrefix("list:") { picker = AppChoice(path: String(a.dropFirst(5))) }
+        }
+        .popover(item: $picker, arrowEdge: .top) { choice in
+            LauncherPicker(w: w, app: choice.path) { picker = nil }
+        }
     }
 
-    private func primaryAction() {
-        if pinned.isEmpty || w.size >= 2 { AppLauncher.open(app: appPath) } else { openList() }
+    @ViewBuilder private func slot(_ app: String?, icon: CGFloat) -> some View {
+        if let app {
+            AppSlot(w: w, app: app, icon: icon * s, showName: w.size > 1 && apps.count <= w.size)
+        } else {
+            Color.clear.frame(width: icon * s, height: icon * s)
+        }
     }
+}
 
-    private func openList() {
-        selection = []
-        filter = ""
-        if let bid = Bundle(path: appPath)?.bundleIdentifier {
-            DispatchQueue.global(qos: .userInitiated).async {
-                let r = AppLauncher.recentDocuments(bundleID: bid, limit: 40)
-                DispatchQueue.main.async { recent = r.filter { !pinned.contains($0.path) } }
+/// One app inside the launcher: click opens, hover unrolls its projects, files dropped on it are pinned to it.
+struct AppSlot: View {
+    let w: WidgetInstance
+    let app: String
+    let icon: CGFloat
+    let showName: Bool
+    @State private var targeted = false
+
+    private var name: String { FileManager.default.displayName(atPath: app).replacingOccurrences(of: ".app", with: "") }
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Image(nsImage: fileIcon(app)).resizable().frame(width: icon, height: icon)
+                .scaleEffect(targeted ? 1.12 : 1)
+            if showName {
+                Text(name).font(.system(size: 9)).lineLimit(1).frame(maxWidth: icon + 16)
             }
         }
-        showList = true
+        .contentShape(Rectangle())
+        .onTapGesture { AppLauncher.open(app: app) }
+        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+            for p in providers {
+                _ = p.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    DispatchQueue.main.async {
+                        if url.pathExtension == "app" { LauncherStore.setApps(w.id, w.launcherApps + [url.path]) }
+                        else { LauncherStore.setPinned(w.id, app: app, w.pinnedFiles(for: app) + [url.path]) }
+                    }
+                }
+            }
+            return true
+        }
+        .hoverUnroll(key: w.id.uuidString + app, width: 360) { AnyView(LauncherHoverList(w: w, app: app)) }
     }
+}
 
-    private var listPopover: some View {
+/// Large chooser: pinned and recent documents of one app, several can be opened at once.
+struct LauncherPicker: View {
+    let w: WidgetInstance
+    let app: String
+    let close: () -> Void
+    @State private var recent: [URL] = []
+    @State private var selection = Set<String>()
+    @State private var filter = ""
+
+    private var pinned: [String] { DockStore.shared.instance(w.id)?.pinnedFiles(for: app) ?? w.pinnedFiles(for: app) }
+    private var name: String { FileManager.default.displayName(atPath: app).replacingOccurrences(of: ".app", with: "") }
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(nsImage: fileIcon(appPath)).resizable().frame(width: 32, height: 32)
-                Text(appName).font(.title3.weight(.semibold))
+                Image(nsImage: fileIcon(app)).resizable().frame(width: 32, height: 32)
+                Text(name).font(.title3.weight(.semibold))
                 Spacer()
-                Button("Nur App öffnen") { AppLauncher.open(app: appPath); showList = false }
-                    .controlSize(.large)
+                Button("Nur App öffnen") { AppLauncher.open(app: app); close() }.controlSize(.large)
             }
             .padding(14)
-            TextField("Filtern …", text: $filter)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.large)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 10)
+            TextField("Filtern …", text: $filter).textFieldStyle(.roundedBorder).controlSize(.large)
+                .padding(.horizontal, 14).padding(.bottom, 10)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     let pins = pinned.filter(matches)
-                    let recents = recent.map(\.path).filter(matches)
-                    if !pins.isEmpty {
-                        sectionTitle("Angeheftet")
-                        ForEach(pins, id: \.self) { fileRow($0, pinnedRow: true) }
-                    }
-                    if !recents.isEmpty {
-                        sectionTitle("Zuletzt verwendet")
-                        ForEach(recents, id: \.self) { fileRow($0, pinnedRow: false) }
-                    }
-                    if pinned.isEmpty && recent.isEmpty {
-                        Text("Keine Dateien. Zieh Dateien auf das Widget oder füge sie hinzu.")
-                            .foregroundStyle(.secondary).padding(10)
+                    let recents = recent.map(\.path).filter { !pinned.contains($0) }.filter(matches)
+                    if !pins.isEmpty { title("Angeheftet"); ForEach(pins, id: \.self) { row($0, pinnedRow: true) } }
+                    if !recents.isEmpty { title("Zuletzt verwendet"); ForEach(recents, id: \.self) { row($0, pinnedRow: false) } }
+                    if pins.isEmpty && recents.isEmpty {
+                        Text("Keine Dateien. Zieh Dateien auf das App-Symbol im Widget.").foregroundStyle(.secondary).padding(14)
                     }
                 }
                 .padding(.vertical, 6)
@@ -171,92 +243,54 @@ struct LauncherWidget: View {
             .frame(minHeight: 300, maxHeight: 520)
             Divider()
             HStack {
-                Button("Hinzufügen …", action: pickFiles)
-                Spacer()
-                Button("\(selection.count) öffnen") {
-                    AppLauncher.open(app: appPath, files: Array(selection))
-                    showList = false
+                Button("Aus Starter entfernen", role: .destructive) {
+                    LauncherStore.setApps(w.id, w.launcherApps.filter { $0 != app })
+                    close()
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(selection.isEmpty)
+                Spacer()
+                Button("\(selection.count) öffnen") { AppLauncher.open(app: app, files: Array(selection)); close() }
+                    .buttonStyle(.borderedProminent).controlSize(.large).disabled(selection.isEmpty)
             }
             .padding(14)
         }
         .frame(width: 640)
+        .onAppear {
+            guard let bid = Bundle(path: app)?.bundleIdentifier else { return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let r = AppLauncher.recentDocuments(bundleID: bid, limit: 40)
+                DispatchQueue.main.async { recent = r }
+            }
+        }
     }
 
-    private func matches(_ path: String) -> Bool {
-        filter.isEmpty || path.localizedCaseInsensitiveContains(filter)
+    private func matches(_ p: String) -> Bool { filter.isEmpty || p.localizedCaseInsensitiveContains(filter) }
+
+    private func title(_ t: String) -> some View {
+        Text(t).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.top, 10)
     }
 
-    private func sectionTitle(_ t: String) -> some View {
-        Text(t).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
-    }
-
-    private func fileRow(_ path: String, pinnedRow: Bool) -> some View {
-        HStack(spacing: 8) {
-            Toggle("", isOn: Binding(get: { selection.contains(path) },
-                                     set: { if $0 { selection.insert(path) } else { selection.remove(path) } }))
+    private func row(_ path: String, pinnedRow: Bool) -> some View {
+        let on = selection.contains(path)
+        return HStack(spacing: 8) {
+            Toggle("", isOn: Binding(get: { on }, set: { if $0 { selection.insert(path) } else { selection.remove(path) } }))
                 .labelsHidden().toggleStyle(.checkbox).controlSize(.large)
             Image(nsImage: fileIcon(path)).resizable().frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 2) {
-                Text(displayName(path)).font(.body.weight(.medium)).lineLimit(1)
+                Text((path as NSString).lastPathComponent).font(.body.weight(.medium)).lineLimit(1)
                 Text((path as NSString).deletingLastPathComponent.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                    .font(.callout).foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.middle)
+                    .font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
             Button {
-                if pinnedRow { setPinned(pinned.filter { $0 != path }) } else { setPinned(pinned + [path]) }
+                let l = pinned
+                LauncherStore.setPinned(w.id, app: app, pinnedRow ? l.filter { $0 != path } : l + [path])
             } label: { Image(systemName: pinnedRow ? "pin.slash" : "pin") }
                 .buttonStyle(.borderless)
-                .help(pinnedRow ? "Lösen" : "Anheften")
         }
         .padding(.horizontal, 14).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selection.contains(path) ? Color.accentColor.opacity(0.15) : .clear)
-            .padding(.horizontal, 6))
+        .background(RoundedRectangle(cornerRadius: 6).fill(on ? Color.accentColor.opacity(0.15) : .clear).padding(.horizontal, 6))
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { AppLauncher.open(app: appPath, files: [path]); showList = false }
-        .onTapGesture { if selection.contains(path) { selection.remove(path) } else { selection.insert(path) } }
-    }
-
-    private func displayName(_ path: String) -> String { (path as NSString).lastPathComponent }
-
-    private func setPinned(_ l: [String]) {
-        var seen = Set<String>()
-        DockStore.shared.setConfig(w.id, "files", l.filter { seen.insert($0).inserted }.joined(separator: "\n"))
-    }
-
-    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        for p in providers {
-            _ = p.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                DispatchQueue.main.async {
-                    if url.pathExtension == "app" && appPath.isEmpty {
-                        DockStore.shared.setConfig(w.id, "app", url.path)
-                    } else {
-                        setPinned(pinned + [url.path])
-                    }
-                }
-            }
-        }
-        return true
-    }
-
-    private func pickApp() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.application]
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        NSApp.activate(ignoringOtherApps: true)
-        if panel.runModal() == .OK, let u = panel.url { DockStore.shared.setConfig(w.id, "app", u.path) }
-    }
-
-    private func pickFiles() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = true
-        panel.treatsFilePackagesAsDirectories = false
-        NSApp.activate(ignoringOtherApps: true)
-        if panel.runModal() == .OK { setPinned(pinned + panel.urls.map(\.path)) }
+        .onTapGesture(count: 2) { AppLauncher.open(app: app, files: [path]); close() }
+        .onTapGesture { if on { selection.remove(path) } else { selection.insert(path) } }
     }
 }

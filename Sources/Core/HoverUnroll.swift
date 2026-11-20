@@ -14,7 +14,7 @@ final class HoverPanel {
     private let panel: DockPanel
     private let model = UnrollModel()
     private var host: FirstMouseHostingView<AnyView>?
-    private(set) var ownerID: UUID?
+    private(set) var ownerID: String?
     private var anchor: NSRect = .zero
     private var pending: DispatchWorkItem?
     private var watch: Timer?
@@ -33,7 +33,7 @@ final class HoverPanel {
     }
 
     /// Called when the pointer enters a tile that has hover content.
-    func enter(owner: UUID, anchor: NSRect, width: CGFloat, content: @escaping () -> AnyView) {
+    func enter(owner: String, anchor: NSRect, width: CGFloat, content: @escaping () -> AnyView) {
         guard DockStore.shared.settings.hoverLists ?? true else { return }
         pending?.cancel()
         if ownerID == owner && isVisible { return }
@@ -42,11 +42,11 @@ final class HoverPanel {
         DispatchQueue.main.asyncAfter(deadline: .now() + (isVisible ? 0.05 : 0.35), execute: work)
     }
 
-    func leave(owner: UUID) {
+    func leave(owner: String) {
         if ownerID != owner { pending?.cancel() }
     }
 
-    private func show(owner: UUID, anchor: NSRect, width: CGFloat, content: AnyView) {
+    private func show(owner: String, anchor: NSRect, width: CGFloat, content: AnyView) {
         self.anchor = anchor
         let screen = NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main ?? NSScreen.screens[0]
         let vis = screen.visibleFrame
@@ -209,12 +209,16 @@ struct Rod: View {
 extension View {
     /// Shows `content` in an unrolling list while the pointer rests on this tile.
     func hoverUnroll(id: UUID, width: CGFloat, enabled: Bool = true, content: @escaping () -> AnyView) -> some View {
-        modifier(HoverUnrollModifier(id: id, width: width, enabled: enabled, content: content))
+        modifier(HoverUnrollModifier(id: id.uuidString, width: width, enabled: enabled, content: content))
+    }
+
+    func hoverUnroll(key: String, width: CGFloat, enabled: Bool = true, content: @escaping () -> AnyView) -> some View {
+        modifier(HoverUnrollModifier(id: key, width: width, enabled: enabled, content: content))
     }
 }
 
 private struct HoverUnrollModifier: ViewModifier {
-    let id: UUID
+    let id: String
     let width: CGFloat
     let enabled: Bool
     let content: () -> AnyView

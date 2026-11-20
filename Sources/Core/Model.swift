@@ -213,7 +213,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .github: ["user": "", "token": ""]
         case .metric: ["title": "Besucher · 7 Tage", "url": "", "path": "", "header": "", "prefix": "", "suffix": "", "interval": "15"]
         case .reminders: ["list": ""]
-        case .launcher: ["app": "/Applications/Xcode.app", "files": ""]
+        case .launcher: ["apps": "/Applications/Xcode.app"]
         default: [:]
         }
     }
@@ -237,9 +237,8 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
                          help: "Safari braucht Festplattenvollzugriff (Systemeinstellungen › Datenschutz & Sicherheit). Das ▾ zeigt immer alle Ordner."),
              ConfigField(key: "items", label: "Eigene Liste (Name|URL pro Zeile)", kind: .multiline)]
         case .launcher:
-            [ConfigField(key: "app", label: "App", placeholder: "/Applications/Xcode.app"),
-             ConfigField(key: "files", label: "Angeheftete Dateien (ein Pfad pro Zeile)", kind: .multiline,
-                         help: "Dateien einfach auf das Widget ziehen. ▾ zeigt zusätzlich die zuletzt geöffneten Dokumente der App; mit Häkchen öffnest du mehrere auf einmal.")]
+            [ConfigField(key: "apps", label: "Apps (ein Pfad pro Zeile, nebeneinander)", kind: .multiline,
+                         help: "Apps einfach auf das Widget ziehen oder über das ＋ hinzufügen. Dateien, die du auf ein App-Symbol ziehst, werden bei dieser App angeheftet. Beim Überfahren eines Symbols rollen seine zuletzt verwendeten Projekte auf.")]
         case .nexus:
             [ConfigField(key: "mode", label: "Enter startet", kind: .choice([("search", "Nexus-Suche"), ("ai", "KI (Apple Intelligence)")]),
                          help: "Mit ✨ wechselst du jederzeit zwischen Suche und KI. Die KI läuft lokal auf dem Mac.")]

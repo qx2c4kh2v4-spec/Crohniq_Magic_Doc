@@ -268,7 +268,6 @@ struct TileContainer: View {
         case .reminders: AnyView(RemindersHoverList(list: instance.cfg("list")))
         case .notes: AnyView(NotesHoverList())
         case .nowPlaying: AnyView(MusicHoverList())
-        case .launcher where !instance.cfg("app").isEmpty: AnyView(LauncherHoverList(w: instance))
         default: nil
         }
     }
@@ -297,10 +296,25 @@ struct TileContainer: View {
             Button("Im Finder zeigen") { WidgetAction.post(id, "reveal") }
             Divider()
         case .launcher:
-            Button("App wählen …") { WidgetAction.post(id, "pickApp") }
-            Button("Dateien hinzufügen …") { WidgetAction.post(id, "pickFiles") }.disabled(instance.cfg("app").isEmpty)
-            Button("Projekte auswählen …") { WidgetAction.post(id, "list") }.disabled(instance.cfg("app").isEmpty)
-            if !instance.cfg("files").isEmpty { Button("Angeheftete Dateien leeren") { store.setConfig(id, "files", "") } }
+            Button("Apps hinzufügen …") { WidgetAction.post(id, "pickApp") }
+            ForEach(instance.launcherApps, id: \.self) { app in
+                let name = FileManager.default.displayName(atPath: app).replacingOccurrences(of: ".app", with: "")
+                Menu(name) {
+                    Button("Projekte auswählen …") { WidgetAction.post(id, "list:" + app) }
+                    Button("Nach links") {
+                        var l = instance.launcherApps
+                        if let i = l.firstIndex(of: app), i > 0 { l.swapAt(i, i - 1); LauncherStore.setApps(id, l) }
+                    }
+                    Button("Nach rechts") {
+                        var l = instance.launcherApps
+                        if let i = l.firstIndex(of: app), i < l.count - 1 { l.swapAt(i, i + 1); LauncherStore.setApps(id, l) }
+                    }
+                    Button("Angeheftete Dateien leeren") { LauncherStore.setPinned(id, app: app, []) }
+                    Button("Aus Starter entfernen", role: .destructive) {
+                        LauncherStore.setApps(id, instance.launcherApps.filter { $0 != app })
+                    }
+                }
+            }
             Divider()
         default:
             EmptyView()

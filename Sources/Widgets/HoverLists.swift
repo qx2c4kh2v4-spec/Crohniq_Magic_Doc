@@ -370,13 +370,12 @@ struct NewNoteEditor: View {
 
 struct LauncherHoverList: View {
     let w: WidgetInstance
+    let app: String
     @State private var recent: [URL] = []
     @State private var loaded = false
 
-    private var appPath: String { w.cfg("app") }
-    private var pinned: [String] {
-        w.cfg("files").split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-    }
+    private var appPath: String { app }
+    private var pinned: [String] { DockStore.shared.instance(w.id)?.pinnedFiles(for: app) ?? w.pinnedFiles(for: app) }
     private var appName: String { FileManager.default.displayName(atPath: appPath).replacingOccurrences(of: ".app", with: "") }
 
     var body: some View {
@@ -441,13 +440,15 @@ struct LauncherHoverList: View {
             Button {
                 var l = pinned
                 if pinnedRow { l.removeAll { $0 == path } } else if !l.contains(path) { l.append(path) }
-                DockStore.shared.setConfig(w.id, "files", l.joined(separator: "\n"))
+                setPinnedList(l)
             } label: { Image(systemName: pinnedRow ? "pin.slash" : "pin").font(.caption) }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.secondary)
                 .help(pinnedRow ? "Lösen" : "Anheften")
         }
     }
+
+    private func setPinnedList(_ l: [String]) { LauncherStore.setPinned(w.id, app: app, l) }
 }
 
 
