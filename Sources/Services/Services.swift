@@ -166,6 +166,12 @@ struct WeatherData: Codable {
     var wind: Double
     var windDir: Double
     var days: [Day]
+    var lat: Double? = nil
+    var lon: Double? = nil
+    /// Precipitation (mm) per 15 minutes for the next 2 hours.
+    var rain15: [Double]? = nil
+    var sunrise: Date? = nil
+    var sunset: Date? = nil
 }
 
 final class WeatherService: ObservableObject {
@@ -227,8 +233,9 @@ final class WeatherService: ObservableObject {
                 f.queryItems = [
                     .init(name: "latitude", value: "\(lat)"), .init(name: "longitude", value: "\(lon)"),
                     .init(name: "current", value: "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m"),
-                    .init(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min"),
+                    .init(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset"),
                     .init(name: "timezone", value: "auto"), .init(name: "forecast_days", value: "5"),
+                    .init(name: "minutely_15", value: "precipitation"), .init(name: "forecast_minutely_15", value: "8"),
                 ]
                 let (fd, _) = try await URLSession.shared.data(from: f.url!)
                 guard let fj = try JSONSerialization.jsonObject(with: fd) as? [String: Any],
@@ -246,7 +253,11 @@ final class WeatherService: ObservableObject {
                 let wd = WeatherData(place: name, temp: cur["temperature_2m"] as? Double ?? 0,
                                      code: cur["weather_code"] as? Int ?? 0,
                                      wind: cur["wind_speed_10m"] as? Double ?? 0,
-                                     windDir: cur["wind_direction_10m"] as? Double ?? 0, days: days)
+                                     windDir: cur["wind_direction_10m"] as? Double ?? 0, days: days,
+                                     lat: lat, lon: lon,
+                                     rain15: (fj["minutely_15"] as? [String: Any])?["precipitation"] as? [Double],
+                                     sunrise: Self.localTime((daily["sunrise"] as? [String])?.first, fj["timezone"] as? String),
+                                     sunset: Self.localTime((daily["sunset"] as? [String])?.first, fj["timezone"] as? String))
                 await MainActor.run { self.data[city] = wd; self.errors[city] = nil; self.persist() }
             } catch {
                 await MainActor.run {
@@ -255,6 +266,30 @@ final class WeatherService: ObservableObject {
                 }
             }
         }
+    }
+
+    static func localTime(_ s: String?, _ tz: String?) -> Date? {
+        guard let s else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        f.timeZone = tz.flatMap(TimeZone.init(identifier:)) ?? .current
+        return f.date(from: s)
+    }
+
+    /// Dark outside? Uses today's sunrise/sunset from any loaded forecast, else a simple clock rule.
+    func isNight(_ now: Date = Date()) -> Bool {
+        let cal = Calendar.current
+        if let d = data.values.first(where: { $0.sunrise != nil && $0.sunset != nil }),
+           let rise = d.sunrise, let set = d.sunset {
+            // Shift stored times to today's date (the cache may be from an earlier day).
+            func today(_ t: Date) -> Date {
+                let c = cal.dateComponents([.hour, .minute], from: t)
+                return cal.date(bySettingHour: c.hour ?? 0, minute: c.minute ?? 0, second: 0, of: now) ?? t
+            }
+            return now < today(rise) || now > today(set)
+        }
+        let h = cal.component(.hour, from: now)
+        return h < 7 || h >= 18
     }
 
     static func isAuto(_ city: String) -> Bool {
@@ -610,6 +645,8 @@ final class EventStore: ObservableObject {
 
     @Published var events: [EKEvent] = []
     @Published var upcoming: [EKEvent] = []
+    /// All events of today (incl. all-day ones) for the bubble on the calendar tile.
+    @Published var todayCount = 0
     @Published var reminders: [EKReminder] = []
     @Published var eventsAuthorized = EKEventStore.authorizationStatus(for: .event) == .fullAccess
     @Published var remindersAuthorized = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
@@ -644,6 +681,9 @@ final class EventStore: ObservableObject {
         events = store.events(matching: pred)
             .filter { !$0.isAllDay && $0.endDate > start }
             .sorted { $0.startDate < $1.startDate }
+        let dayStart = Calendar.current.startOfDay(for: start)
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)!
+        todayCount = store.events(matching: store.predicateForEvents(withStart: dayStart, end: dayEnd, calendars: nil)).count
     }
 
     /// Events of the next `days` days for the unrolled list.

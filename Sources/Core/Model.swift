@@ -243,8 +243,9 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
             [ConfigField(key: "mode", label: "Enter startet", kind: .choice([("search", "Nexus-Suche"), ("ai", "KI (Apple Intelligence)")]),
                          help: "Mit ✨ wechselst du jederzeit zwischen Suche und KI. Die KI läuft lokal auf dem Mac.")]
         case .search:
-            [ConfigField(key: "mode", label: "Suchart", kind: .choice([("files", "Dateien (Spotlight)"), ("web", "Web")])),
-             ConfigField(key: "engine", label: "Suchmaschine", kind: .choice([("google", "Google"), ("duckduckgo", "DuckDuckGo"), ("bing", "Bing"), ("perplexity", "Perplexity")]))]
+            [ConfigField(key: "mode", label: "Suchart", kind: .choice([("files", "Dateien (Spotlight)"), ("web", "Web & KI")])),
+             ConfigField(key: "engine", label: "Suchmaschine / KI", kind: .choice(SearchEngine.available.filter { $0 != .files }.map { ($0.rawValue, $0.label) }),
+                         help: "Apple Intelligence antwortet direkt an der Leiste. ChatGPT und Claude erscheinen nur, wenn die App installiert ist. Auf dem Symbol im Widget wechselst du jederzeit.")]
         case .pomodoro:
             [ConfigField(key: "work", label: "Fokus (Minuten)", kind: .number),
              ConfigField(key: "break", label: "Pause (Minuten)", kind: .number)]

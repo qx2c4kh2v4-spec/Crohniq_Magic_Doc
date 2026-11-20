@@ -563,13 +563,28 @@ struct SearchWidget: View {
     @State private var results: [String] = []
     @State private var showResults = false
     @FocusState private var focused: Bool
+    @StateObject private var ai = GeneralAI()
+    @State private var showAI = false
 
-    private var isWeb: Bool { w.cfg("mode") == "web" }
+    private var engine: SearchEngine { SearchEngine.of(w) }
+    private var isWeb: Bool { engine != .files }
 
     var body: some View {
         HStack(spacing: 8 * s) {
-            Image(systemName: isWeb ? "globe" : "magnifyingglass").foregroundStyle(Theme.secondary)
-            TextField(isWeb ? "Im Web suchen …" : "Dateien finden …", text: $query)
+            Menu {
+                ForEach(SearchEngine.available) { e in
+                    Button {
+                        SearchEngine.set(e, for: w.id)
+                    } label: {
+                        if e == engine { Label(e.label, systemImage: "checkmark") } else { Label(e.label, systemImage: e.symbol) }
+                    }
+                }
+            } label: {
+                Image(systemName: engine.symbol).foregroundStyle(engine == .apple ? AnyShapeStyle(LinearGradient(colors: [.orange, .pink, .purple, .blue], startPoint: .leading, endPoint: .trailing)) : AnyShapeStyle(Theme.secondary))
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .help("Suche: \(engine.label) – klicken zum Wechseln")
+            TextField(engine.placeholder, text: $query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13 * s))
                 .focused($focused)
@@ -580,6 +595,7 @@ struct SearchWidget: View {
         .padding(.horizontal, 4 * s)
         .contentShape(Rectangle())
         .onTapGesture { NSApp.activate(ignoringOtherApps: true); focused = true }
+        .popover(isPresented: $showAI, arrowEdge: .top) { GeneralAIPanel(ai: ai) }
         .popover(isPresented: $showResults, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 if results.isEmpty {
@@ -621,16 +637,24 @@ struct SearchWidget: View {
     private func submit() {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return }
+        switch engine {
+        case .apple:
+            ai.ask(q)
+            showAI = true
+            query = ""
+            return
+        case .chatgpt:
+            SearchEngine.askChatGPT(q)
+            query = ""
+            return
+        case .claude:
+            SearchEngine.askClaude(q)
+            query = ""
+            return
+        default: break
+        }
         if isWeb {
-            let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
-            let base: String
-            switch w.cfg("engine") {
-            case "duckduckgo": base = "https://duckduckgo.com/?q="
-            case "bing": base = "https://www.bing.com/search?q="
-            case "perplexity": base = "https://www.perplexity.ai/search?q="
-            default: base = "https://www.google.com/search?q="
-            }
-            if let u = URL(string: base + enc) { NSWorkspace.shared.open(u) }
+            engine.openWeb(q)
             query = ""
         } else {
             Shell.runAsync("/usr/bin/mdfind", ["-name", q]) { out in

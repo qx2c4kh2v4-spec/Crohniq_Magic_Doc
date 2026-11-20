@@ -245,27 +245,33 @@ struct WidgetSettings: View {
             }
             .frame(minWidth: 300, idealWidth: 340)
 
-            Group {
-                if let id = store.editingWidgetID, let w = store.instance(id) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 14) {
-                            HStack(spacing: 12) {
-                                PreviewTile(kind: w.kind) {}.id(w.id).allowsHitTesting(false)
-                                Spacer()
+            VSplitView {
+                Group {
+                    if let id = store.editingWidgetID, let w = store.instance(id) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 14) {
+                                HStack(spacing: 12) {
+                                    PreviewTile(kind: w.kind) {}.id(w.id).allowsHitTesting(false)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 20).padding(.top, 20)
+                                WidgetEditor(w: w).id(id)
                             }
-                            .padding(.horizontal, 20).padding(.top, 20)
-                            WidgetEditor(w: w).id(id)
                         }
+                    } else {
+                        VStack(spacing: 8) {
+                            Image(systemName: "hand.point.left").font(.largeTitle).foregroundStyle(.secondary)
+                            Text("Widget links auswählen, um Grösse und Optionen einzustellen.").foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                } else {
-                    VStack(spacing: 8) {
-                        Image(systemName: "hand.point.left").font(.largeTitle).foregroundStyle(.secondary)
-                        Text("Widget links auswählen, um Grösse und Optionen einzustellen.").foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .frame(minHeight: 220, idealHeight: 340)
+
+                AddPanel()
+                    .frame(minHeight: 220, idealHeight: 340)
             }
-            .frame(minWidth: 420)
+            .frame(minWidth: 460)
         }
         .navigationTitle("In der Leiste")
     }
@@ -639,20 +645,8 @@ struct ScreenPreview: View {
                 RoundedRectangle(cornerRadius: 6).fill(LinearGradient(colors: [.indigo.opacity(0.5), .teal.opacity(0.4)],
                                                                       startPoint: .topLeading, endPoint: .bottomTrailing))
                 ForEach(previewItems, id: \.key) { item in
-                    let app = item.app
-                    let f = item.frame
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
-                        .overlay(RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(highlighted == app.id ? Color.accentColor : Color.black.opacity(0.2), lineWidth: highlighted == app.id ? 2 : 1))
-                        .overlay {
-                            VStack(spacing: 2) {
-                                Image(nsImage: fileIcon(app.path)).resizable().frame(width: 22, height: 22)
-                                Text(app.name).font(.caption2).lineLimit(1)
-                            }
-                        }
-                        .frame(width: max(20, w * f.w - 3), height: max(20, h * f.h - 3))
-                        .offset(x: w * f.x + 1.5, y: h * f.y + 1.5)
+                    PreviewWindowBox(app: item.app, frame: item.frame, screenW: w, screenH: h,
+                                     highlighted: highlighted == item.app.id)
                 }
             }
             .frame(width: w, height: h)
@@ -677,4 +671,32 @@ struct ScreenPreview: View {
         }
         return items
     }
+}
+
+private struct PreviewWindowBox: View {
+    let app: WorkspaceApp
+    let frame: FracRect
+    let screenW: CGFloat
+    let screenH: CGFloat
+    let highlighted: Bool
+
+    var body: some View {
+        let bw: CGFloat = max(20, screenW * CGFloat(frame.w) - 3)
+        let bh: CGFloat = max(20, screenH * CGFloat(frame.h) - 3)
+        let x: CGFloat = screenW * CGFloat(frame.x) + 1.5
+        let y: CGFloat = screenH * CGFloat(frame.y) + 1.5
+        let border: Color = highlighted ? .accentColor : .black.opacity(0.2)
+        return RoundedRectangle(cornerRadius: 4)
+            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(border, lineWidth: highlighted ? 2 : 1))
+            .overlay {
+                VStack(spacing: 2) {
+                    Image(nsImage: fileIcon(app.path)).resizable().frame(width: 22, height: 22)
+                    Text(app.name).font(.caption2).lineLimit(1)
+                }
+            }
+            .frame(width: bw, height: bh)
+            .offset(x: x, y: y)
+    }
+
 }

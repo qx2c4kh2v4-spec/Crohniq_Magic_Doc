@@ -708,3 +708,116 @@ struct MusicHoverList: View {
         .buttonStyle(.plain)
     }
 }
+
+// MARK: - World clock
+
+enum WorldClocks {
+    struct Place: Hashable { let name: String; let tz: TimeZone }
+
+    static func list(_ w: WidgetInstance) -> [Place] {
+        w.cfg("worldClocks").split(separator: "\n").compactMap { line in
+            let p = line.split(separator: "|", maxSplits: 1).map(String.init)
+            guard p.count == 2, let tz = TimeZone(identifier: p[1]) else { return nil }
+            return Place(name: p[0], tz: tz)
+        }
+    }
+
+    static func save(_ l: [Place], _ id: UUID) {
+        DockStore.shared.setConfig(id, "worldClocks", l.map { "\($0.name)|\($0.tz.identifier)" }.joined(separator: "\n"))
+    }
+
+    /// Asks for a city, looks up its time zone (Open-Meteo geocoding) and adds it.
+    static func add(to w: WidgetInstance) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Weltuhr-Ort hinzufügen"
+        alert.informativeText = "Stadt eingeben, z. B. „New York“, „Tokio“ oder „Sydney“."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Hinzufügen")
+        alert.addButton(withTitle: "Abbrechen")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let q = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        Task {
+            var c = URLComponents(string: "https://geocoding-api.open-meteo.com/v1/search")!
+            c.queryItems = [.init(name: "name", value: q), .init(name: "count", value: "1"), .init(name: "language", value: "de")]
+            guard let (data, _) = try? await URLSession.shared.data(from: c.url!),
+                  let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let first = (j["results"] as? [[String: Any]])?.first,
+                  let tzID = first["timezone"] as? String, let tz = TimeZone(identifier: tzID) else {
+                await MainActor.run { Notifier.notify("Ort nicht gefunden", q) }
+                return
+            }
+            let name = first["name"] as? String ?? q
+            await MainActor.run {
+                let current = DockStore.shared.instance(w.id) ?? w
+                var l = list(current)
+                if !l.contains(where: { $0.name == name }) { l.append(Place(name: name, tz: tz)) }
+                save(l, w.id)
+            }
+        }
+    }
+}
+
+struct ClockHoverList: View {
+    let w: WidgetInstance
+    @ObservedObject private var store = DockStore.shared
+    @ObservedObject private var ticker = Ticker.shared
+
+    var body: some View {
+        let places = WorldClocks.list(store.instance(w.id) ?? w)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Weltuhr", systemImage: "globe.europe.africa").font(.headline)
+                Spacer()
+                Button {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Clock.app"))
+                    HoverPanel.shared.close()
+                } label: { Image(systemName: "arrow.up.forward.app") }
+                    .buttonStyle(.plain).help("Uhr-App öffnen")
+            }
+            .padding(.horizontal, 12)
+            VStack(alignment: .leading, spacing: 8) {
+                row(name: "Hier", tz: .current, removable: false)
+                ForEach(places, id: \.self) { p in row(name: p.name, tz: p.tz, removable: true) }
+            }
+            .padding(.horizontal, 12)
+            Button {
+                HoverPanel.shared.close()
+                WorldClocks.add(to: w)
+            } label: { Label("Ort hinzufügen", systemImage: "plus") }
+                .buttonStyle(.link).padding(.horizontal, 12)
+        }
+    }
+
+    private func row(name: String, tz: TimeZone, removable: Bool) -> some View {
+        let now = ticker.now
+        var cal = Calendar.current
+        cal.timeZone = tz
+        let hour = cal.component(.hour, from: now)
+        let night = hour < 7 || hour >= 19
+        let diff = (tz.secondsFromGMT(for: now) - TimeZone.current.secondsFromGMT(for: now)) / 3600
+        let dayShift = cal.startOfDay(for: now) != Calendar.current.startOfDay(for: now)
+            ? (cal.component(.day, from: now) > Calendar.current.component(.day, from: now) ? "Morgen" : "Gestern") : "Heute"
+        let time = now.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: Locale(identifier: "de_CH"), timeZone: tz))
+        return HStack(spacing: 10) {
+            Image(systemName: night ? "moon.stars.fill" : "sun.max.fill")
+                .foregroundStyle(night ? Color.indigo : Color.orange).frame(width: 18)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(name).font(.callout.weight(.semibold))
+                Text(removable ? "\(dayShift), \(diff >= 0 ? "+" : "")\(diff) Std." : "Lokale Zeit")
+                    .font(.caption).foregroundStyle(Theme.secondary)
+            }
+            Spacer()
+            Text(time).font(.system(size: 20, weight: .semibold, design: .rounded)).monospacedDigit()
+            if removable {
+                Button {
+                    WorldClocks.save(WorldClocks.list(store.instance(w.id) ?? w).filter { $0.name != name }, w.id)
+                } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.secondary) }
+                    .buttonStyle(.plain).help("Entfernen")
+            }
+        }
+    }
+}

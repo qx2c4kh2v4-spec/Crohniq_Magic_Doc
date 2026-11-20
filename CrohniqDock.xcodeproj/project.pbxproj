@@ -18,12 +18,15 @@
 		535229E62868CCC440F018D9 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45CE8E11D71391F582AA3351 /* App.swift */; };
 		632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */; };
 		7C227B986DAA3D63EF621C7F /* DockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F9F378EC332D7CADF2497B /* DockView.swift */; };
+		8187D90A6D495AA1CEF23EFE /* WeatherRadar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C35C8063FA42BC4822F3AAD /* WeatherRadar.swift */; };
 		908F1AB7D3BB410BD0F681BF /* HoverUnroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B08E70115B4613534F46521 /* HoverUnroll.swift */; };
 		9C29501B5809C478CF64FC3E /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BFBC845FC638B78B0DC11C0 /* Services.swift */; };
 		AA48A04C45C2F7E6D498E547 /* ProductivityWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D561D557DA3EA7AE852261 /* ProductivityWidgets.swift */; };
 		B730ACB20AB4D5EF92EAE023 /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62522C331928E81EB498650C /* LauncherWidget.swift */; };
 		C188C4831844B78B3F969EEA /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A6240DE39C96220752AB753 /* Model.swift */; };
 		D3B473FD47DA8B96514C9108 /* NexusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A27DCA15116D6637EA85F06 /* NexusWidget.swift */; };
+		D66A973CC0BD72D4EEA1548A /* SearchAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32529777FEFE89CF0A2F9B46 /* SearchAI.swift */; };
+		D8B8E71D467B5BBAAC7EB295 /* AddPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41F0DC0D1265BEDFE91B3E18 /* AddPanel.swift */; };
 		DE5282FF7C060C4C592363CD /* BookmarksWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC041A333725545DE5CEBF20 /* BookmarksWidget.swift */; };
 		F617FC6F2CB3408ACA6BD1B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4D81D1BE6592FCA4BFCA95C5 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -33,10 +36,13 @@
 		0CC5C930CB6EE48C51ECEC53 /* SystemWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWidgets.swift; sourceTree = "<group>"; };
 		22578C4A33F285D38894C557 /* AppWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppWidgets.swift; sourceTree = "<group>"; };
 		2B08E70115B4613534F46521 /* HoverUnroll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverUnroll.swift; sourceTree = "<group>"; };
+		32529777FEFE89CF0A2F9B46 /* SearchAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchAI.swift; sourceTree = "<group>"; };
 		3A27DCA15116D6637EA85F06 /* NexusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusWidget.swift; sourceTree = "<group>"; };
 		3F8597BAEDDB76DC5095BAF7 /* HoverLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverLists.swift; sourceTree = "<group>"; };
+		41F0DC0D1265BEDFE91B3E18 /* AddPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPanel.swift; sourceTree = "<group>"; };
 		45CE8E11D71391F582AA3351 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		4D81D1BE6592FCA4BFCA95C5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5C35C8063FA42BC4822F3AAD /* WeatherRadar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherRadar.swift; sourceTree = "<group>"; };
 		62522C331928E81EB498650C /* LauncherWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherWidget.swift; sourceTree = "<group>"; };
 		7B2D1DB90C7B4EA53CDA64FA /* UtilityWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityWidgets.swift; sourceTree = "<group>"; };
 		8A6240DE39C96220752AB753 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
@@ -79,6 +85,7 @@
 		97C0584D3848F71A39F3DF42 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				41F0DC0D1265BEDFE91B3E18 /* AddPanel.swift */,
 				45CE8E11D71391F582AA3351 /* App.swift */,
 				CAFF06EFA8605BD8E9798FB8 /* DockPanel.swift */,
 				A5F9F378EC332D7CADF2497B /* DockView.swift */,
@@ -120,8 +127,10 @@
 				3A27DCA15116D6637EA85F06 /* NexusWidget.swift */,
 				E1D561D557DA3EA7AE852261 /* ProductivityWidgets.swift */,
 				E12ACE9678E89F3336BBA0E6 /* QuitAppsWidget.swift */,
+				32529777FEFE89CF0A2F9B46 /* SearchAI.swift */,
 				0CC5C930CB6EE48C51ECEC53 /* SystemWidgets.swift */,
 				7B2D1DB90C7B4EA53CDA64FA /* UtilityWidgets.swift */,
+				5C35C8063FA42BC4822F3AAD /* WeatherRadar.swift */,
 			);
 			path = Widgets;
 			sourceTree = "<group>";
@@ -197,6 +206,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D8B8E71D467B5BBAAC7EB295 /* AddPanel.swift in Sources */,
 				535229E62868CCC440F018D9 /* App.swift in Sources */,
 				332888E1FECF85568946A7E4 /* AppWidgets.swift in Sources */,
 				DE5282FF7C060C4C592363CD /* BookmarksWidget.swift in Sources */,
@@ -210,10 +220,12 @@
 				D3B473FD47DA8B96514C9108 /* NexusWidget.swift in Sources */,
 				AA48A04C45C2F7E6D498E547 /* ProductivityWidgets.swift in Sources */,
 				3C94AF079E5912164D207AD8 /* QuitAppsWidget.swift in Sources */,
+				D66A973CC0BD72D4EEA1548A /* SearchAI.swift in Sources */,
 				9C29501B5809C478CF64FC3E /* Services.swift in Sources */,
 				26A0D881C08A42AE53A8E0E4 /* SettingsView.swift in Sources */,
 				4AA4A668EA32F5B12342E356 /* SystemWidgets.swift in Sources */,
 				31DBD80E6C9363B3712045DB /* UtilityWidgets.swift in Sources */,
+				8187D90A6D495AA1CEF23EFE /* WeatherRadar.swift in Sources */,
 				632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -255,7 +267,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 27;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = FW84ZL64CN;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -314,7 +326,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 27;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = FW84ZL64CN;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

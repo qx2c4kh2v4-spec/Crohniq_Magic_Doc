@@ -128,27 +128,40 @@ struct WaterWidget: View {
     var body: some View {
         let goal = max(1, w.cfgInt("goal", 8))
         let frac = min(1, Double(count) / Double(goal))
+        let night = WeatherService.shared.isNight(ticker.now)
         GeometryReader { g in
             let W = g.size.width, H = g.size.height
             ZStack {
-                // Sky and sun
-                LinearGradient(colors: [Color(red: 1.0, green: 0.83, blue: 0.52), Color(red: 0.98, green: 0.62, blue: 0.36)],
+                // Sky: day with sun, night with moon and twinkling stars
+                LinearGradient(colors: night
+                               ? [Color(red: 0.05, green: 0.07, blue: 0.2), Color(red: 0.2, green: 0.14, blue: 0.35)]
+                               : [Color(red: 1.0, green: 0.83, blue: 0.52), Color(red: 0.98, green: 0.62, blue: 0.36)],
                                startPoint: .top, endPoint: .bottom)
-                Circle().fill(Color(red: 1, green: 0.95, blue: 0.6))
-                    .frame(width: H * 0.22, height: H * 0.22)
-                    .shadow(color: .yellow.opacity(0.8), radius: 6)
-                    .position(x: W * 0.86, y: H * 0.2)
+                if night {
+                    StarField(seed: 7, twinkle: ticker.now)
+                    MoonShape().fill(Color(red: 1, green: 0.97, blue: 0.82))
+                        .frame(width: H * 0.2, height: H * 0.2)
+                        .shadow(color: .white.opacity(0.6), radius: 5)
+                        .position(x: W * 0.86, y: H * 0.2)
+                } else {
+                    Circle().fill(Color(red: 1, green: 0.95, blue: 0.6))
+                        .frame(width: H * 0.22, height: H * 0.22)
+                        .shadow(color: .yellow.opacity(0.8), radius: 6)
+                        .position(x: W * 0.86, y: H * 0.2)
+                }
                 // Dunes
-                Dune(peak: 0.35, height: 0.42).fill(Color(red: 0.95, green: 0.74, blue: 0.43))
-                Dune(peak: 0.75, height: 0.28).fill(Color(red: 0.89, green: 0.63, blue: 0.33))
+                Dune(peak: 0.35, height: 0.42).fill(night ? Color(red: 0.32, green: 0.26, blue: 0.36) : Color(red: 0.95, green: 0.74, blue: 0.43))
+                Dune(peak: 0.75, height: 0.28).fill(night ? Color(red: 0.24, green: 0.19, blue: 0.29) : Color(red: 0.89, green: 0.63, blue: 0.33))
                 // Puddle grows with every glass; becomes an oasis at the goal
                 let pw = W * (0.12 + 0.5 * frac), ph = H * (0.06 + 0.12 * frac)
                 ZStack {
-                    Ellipse().fill(LinearGradient(colors: [Color(red: 0.45, green: 0.8, blue: 1), Color(red: 0.12, green: 0.45, blue: 0.85)],
+                    Ellipse().fill(LinearGradient(colors: night
+                                                  ? [Color(red: 0.3, green: 0.45, blue: 0.75), Color(red: 0.08, green: 0.15, blue: 0.4)]
+                                                  : [Color(red: 0.45, green: 0.8, blue: 1), Color(red: 0.12, green: 0.45, blue: 0.85)],
                                                   startPoint: .top, endPoint: .bottom))
-                    Ellipse().fill(.white.opacity(0.55))
-                        .frame(width: pw * 0.35, height: ph * 0.22)
-                        .offset(x: -pw * 0.15, y: -ph * 0.15)
+                    Ellipse().fill(.white.opacity(night ? 0.8 : 0.55))
+                        .frame(width: pw * (night ? 0.18 : 0.35), height: ph * 0.22)
+                        .offset(x: night ? pw * 0.2 : -pw * 0.15, y: -ph * 0.15)
                         .opacity(ticker.now.timeIntervalSince1970.truncatingRemainder(dividingBy: 2) < 1 ? 0.9 : 0.4)
                         .animation(.easeInOut(duration: 1), value: ticker.now)
                 }
@@ -158,16 +171,24 @@ struct WaterWidget: View {
                 .animation(.spring(response: 0.6, dampingFraction: 0.6), value: count)
                 if frac >= 1 {
                     Text("🌴").font(.system(size: H * 0.34)).position(x: W * 0.86, y: H * 0.66)
+                        .brightness(night ? -0.35 : 0)
                         .transition(.scale.combined(with: .opacity))
                 }
-                // The camel, facing the puddle, hops for joy
+                // The camel: stands and hops by day, lies down and sleeps at night
                 Text("🐪")
                     .font(.system(size: H * (w.size == 1 ? 0.46 : 0.52)))
-                    .scaleEffect(x: -1)
+                    .scaleEffect(x: -1, y: night && !hop ? 0.62 : 1, anchor: .bottom)
+                    .brightness(night ? -0.3 : 0)
                     .rotationEffect(.degrees(hop ? -8 : 0))
-                    .offset(y: hop ? -H * 0.12 : 0)
+                    .offset(y: hop ? -H * (night ? 0.06 : 0.12) : (night ? H * 0.08 : 0))
                     .position(x: W * (w.size == 1 ? 0.3 : 0.25), y: H * 0.66)
                     .animation(.spring(response: 0.25, dampingFraction: 0.45), value: hop)
+                if night && !hop {
+                    Text("z").font(.system(size: H * 0.13, weight: .bold, design: .rounded)).foregroundStyle(.white.opacity(0.75))
+                        .offset(y: ticker.now.timeIntervalSince1970.truncatingRemainder(dividingBy: 2) < 1 ? -2 : -6)
+                        .animation(.easeInOut(duration: 1), value: ticker.now)
+                        .position(x: W * (w.size == 1 ? 0.48 : 0.4), y: H * 0.42)
+                }
                 ForEach(bursts, id: \.self) { id in
                     JoyBurst(symbol: frac >= 1 ? "❤️" : (id.hashValue % 2 == 0 ? "💧" : "❤️"))
                         .position(x: W * (w.size == 1 ? 0.38 : 0.32), y: H * 0.38)
@@ -177,11 +198,11 @@ struct WaterWidget: View {
                     Text("\(count)/\(goal)")
                         .font(.system(size: (w.size == 1 ? 12 : 15) * s, weight: .bold, design: .rounded))
                     if w.size > 1 {
-                        Text(frac >= 1 ? "Oase erreicht!" : "Gläser heute").font(.system(size: 9 * s, weight: .medium))
+                        Text(frac >= 1 ? "Oase erreicht!" : (night ? "Gute Nacht" : "Gläser heute")).font(.system(size: 9 * s, weight: .medium))
                     }
                 }
-                .foregroundStyle(Color(red: 0.35, green: 0.18, blue: 0.05))
-                .shadow(color: .white.opacity(0.6), radius: 1)
+                .foregroundStyle(night ? Color.white.opacity(0.9) : Color(red: 0.35, green: 0.18, blue: 0.05))
+                .shadow(color: night ? .black.opacity(0.5) : .white.opacity(0.6), radius: 1)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.leading, 8 * s).padding(.top, 6 * s)
             }
@@ -237,6 +258,38 @@ struct JoyBurst: View {
             .opacity(up ? 0 : 1)
             .scaleEffect(up ? 1.3 : 0.7)
             .onAppear { withAnimation(.easeOut(duration: 1.2)) { up = true } }
+    }
+}
+
+/// Small stars at fixed pseudo-random spots that twinkle with the clock.
+struct StarField: View {
+    let seed: Int
+    let twinkle: Date
+
+    var body: some View {
+        GeometryReader { g in
+            let t = Int(twinkle.timeIntervalSince1970)
+            ForEach(0..<18, id: \.self) { i in
+                let x = Double((i * 73 + seed * 31) % 100) / 100
+                let y = Double((i * 41 + seed * 17) % 55) / 100
+                let size: CGFloat = i % 5 == 0 ? 2.2 : 1.3
+                Circle().fill(.white)
+                    .frame(width: size, height: size)
+                    .opacity((t + i) % 3 == 0 ? 0.35 : 0.95)
+                    .position(x: g.size.width * x, y: g.size.height * y + 2)
+                    .animation(.easeInOut(duration: 0.8), value: t)
+            }
+        }
+    }
+}
+
+/// Crescent moon.
+struct MoonShape: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path(ellipseIn: r)
+        let cut = Path(ellipseIn: r.offsetBy(dx: r.width * 0.32, dy: -r.height * 0.12))
+        p = p.subtracting(cut)
+        return p
     }
 }
 
@@ -299,9 +352,16 @@ struct CalendarWidget: View {
             .padding(.vertical, 4 * s)
             .background(RoundedRectangle(cornerRadius: 8 * s).fill(Theme.tileHi))
             .overlay(alignment: .topTrailing) {
-                if w.size == 1, !ek.events.isEmpty {
-                    Text("\(ek.events.count)").font(.system(size: 9 * s, weight: .bold))
-                        .padding(3 * s).background(Circle().fill(.red)).offset(x: 6 * s, y: -6 * s)
+                if ek.todayCount > 0 {
+                    Text("\(ek.todayCount)")
+                        .font(.system(size: 9 * s, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 15 * s, minHeight: 15 * s)
+                        .padding(.horizontal, ek.todayCount > 9 ? 3 * s : 0)
+                        .background(Capsule().fill(.red))
+                        .overlay(Capsule().strokeBorder(Theme.tile, lineWidth: 1.5))
+                        .offset(x: 6 * s, y: -6 * s)
+                        .help("\(ek.todayCount) Termine heute")
                 }
             }
             .help(ek.events.first.map { "\($0.title ?? "") – \(timeText($0))" } ?? "Keine weiteren Termine")

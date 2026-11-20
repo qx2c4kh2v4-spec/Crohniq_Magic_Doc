@@ -256,7 +256,7 @@ struct TileContainer: View {
                 }
             }
             .clipShape(shape)
-            .hoverUnroll(id: instance.id, width: instance.kind == .launcher ? 360 : 300, enabled: hoverContent != nil) { hoverContent ?? AnyView(EmptyView()) }
+            .hoverUnroll(id: instance.id, width: instance.kind == .weather ? 380 : 300, enabled: hoverContent != nil) { hoverContent ?? AnyView(EmptyView()) }
             .contentShape(RoundedRectangle(cornerRadius: store.corner, style: .continuous))
             .contextMenu { menu }
     }
@@ -267,6 +267,8 @@ struct TileContainer: View {
         case .calendar: AnyView(CalendarHoverList())
         case .reminders: AnyView(RemindersHoverList(list: instance.cfg("list")))
         case .notes: AnyView(NotesHoverList())
+        case .clock: AnyView(ClockHoverList(w: instance))
+        case .weather: AnyView(WeatherHoverList(city: instance.cfg("city", "auto")))
         case .nowPlaying: AnyView(MusicHoverList())
         default: nil
         }
@@ -279,6 +281,35 @@ struct TileContainer: View {
         case .clock:
             Button(instance.cfg("style") == "analog" ? "Als Digitaluhr anzeigen" : "Als Analoguhr anzeigen") {
                 store.setConfig(id, "style", instance.cfg("style") == "analog" ? "digital" : "analog")
+            }
+            Button("Weltuhr-Ort hinzufügen …") { WorldClocks.add(to: instance) }
+            Divider()
+        case .weather:
+            Menu("Ort") {
+                Button {
+                    store.setConfig(id, "city", "auto")
+                } label: {
+                    if WeatherService.isAuto(instance.cfg("city", "auto")) { Label("Aktueller Standort", systemImage: "checkmark") }
+                    else { Label("Aktueller Standort", systemImage: "location") }
+                }
+                let places = instance.cfg("places").split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+                if !places.isEmpty { Divider() }
+                ForEach(places, id: \.self) { p in
+                    Button {
+                        store.setConfig(id, "city", p)
+                    } label: {
+                        if instance.cfg("city") == p { Label(p, systemImage: "checkmark") } else { Text(p) }
+                    }
+                }
+                Divider()
+                Button("Ort hinzufügen …") { WeatherPlaces.add(to: instance) }
+                if !places.isEmpty {
+                    Menu("Ort entfernen") {
+                        ForEach(places, id: \.self) { p in
+                            Button(p) { WeatherPlaces.remove(p, from: instance) }
+                        }
+                    }
+                }
             }
             Divider()
         case .water:
