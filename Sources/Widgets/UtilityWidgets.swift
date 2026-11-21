@@ -254,8 +254,8 @@ final class DeveloperUsageStore: ObservableObject {
     static let shared = DeveloperUsageStore()
 
     struct Value {
-        var day: Int = 0
-        var month: Int = 0
+        var primary = "Wird geladen …"
+        var secondary = "Wird geladen …"
     }
 
     @Published private(set) var values: [DeveloperUsageProvider: Value] = [:]
@@ -267,55 +267,139 @@ final class DeveloperUsageStore: ObservableObject {
     }
 
     func refresh() {
-        let calendar = Calendar.current
-        let now = Date()
-        let dayStart = calendar.startOfDay(for: now)
-        var monthComponents = calendar.dateComponents([.year, .month], from: now)
-        monthComponents.day = 1
-        let monthStart = calendar.date(from: monthComponents) ?? dayStart
-
-        values[.claude] = Value(
-            day: countJSONLines(at: NSHomeDirectory() + "/.claude/history.jsonl", timestampKey: "timestamp", scale: 1000, after: dayStart),
-            month: countJSONLines(at: NSHomeDirectory() + "/.claude/history.jsonl", timestampKey: "timestamp", scale: 1000, after: monthStart)
-        )
-        values[.codex] = Value(
-            day: countJSONLines(at: NSHomeDirectory() + "/.codex/history.jsonl", timestampKey: "ts", scale: 1, after: dayStart),
-            month: countJSONLines(at: NSHomeDirectory() + "/.codex/history.jsonl", timestampKey: "ts", scale: 1, after: monthStart)
-        )
+        Task { await refreshCodex() }
+        Task { await refreshClaude() }
         values[.cursor] = Value(
-            day: cursorCount(after: dayStart),
-            month: cursorCount(after: monthStart)
+            primary: "Kontingent:",
+            secondary: "Im Cursor-Dashboard öffnen"
         )
     }
 
-    private func countJSONLines(at path: String, timestampKey: String, scale: Double, after date: Date) -> Int {
-        guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return 0 }
-        let threshold = date.timeIntervalSince1970 * scale
-        var count = 0
-        for line in data.split(separator: "\n") {
-            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-                  let raw = object[timestampKey] as? NSNumber else { continue }
-            let timestamp = raw.doubleValue
-            if timestamp >= threshold { count += 1 }
+    private func refreshCodex() async {
+        guard let auth = try? JSONSerialization.jsonObject(
+            with: Data(contentsOf: URL(fileURLWithPath: NSHomeDirectory() + "/.codex/auth.json")),
+            options: []
+        ) as? [String: Any],
+        let tokens = auth["tokens"] as? [String: Any],
+        let accessToken = tokens["access_token"] as? String else {
+            await MainActor.run { values[.codex] = Value(primary: "Nicht angemeldet", secondary: "Codex-Dashboard öffnen") }
+            return
         }
-        return count
+
+        var request = URLRequest(url: URL(string: "https://chatgpt.com/backend-api/wham/usage")!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rate = json["rate_limit"] as? [String: Any] else {
+            await MainActor.run { values[.codex] = Value(primary: "Nicht abrufbar", secondary: "Offizielles Dashboard öffnen") }
+            return
+        }
+
+        let primary = rate["primary_window"] as? [String: Any]
+        let used = Int((primary?["used_percent"] as? NSNumber)?.doubleValue ?? 0)
+        let resetSeconds = Int((primary?["reset_after_seconds"] as? NSNumber)?.doubleValue ?? 0)
+        let resetText = resetSeconds > 0
+            ? "Reset in \(usageResetText(resetSeconds))"
+            : "Zeitfenster"
+        await MainActor.run {
+            values[.codex] = Value(
+                primary: "Verbraucht: \(used) %",
+                secondary: resetText
+            )
+        }
     }
 
-    private func cursorCount(after date: Date) -> Int {
-        let db = NSHomeDirectory() + "/.cursor/ai-tracking/ai-code-tracking.db"
-        guard FileManager.default.isReadableFile(atPath: db) else { return 0 }
-        let threshold = Int64(date.timeIntervalSince1970 * 1000)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = [db, "select count(*) from ai_code_hashes where createdAt >= \(threshold);"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        guard (try? process.run()) != nil else { return 0 }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return 0 }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return Int(String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
+    private func refreshClaude() async {
+        guard let credentials = loadClaudeCredentials() else {
+            await MainActor.run { values[.claude] = Value(primary: "Nicht abrufbar", secondary: "Claude neu anmelden") }
+            return
+        }
+
+        var accessToken = credentials.accessToken
+        if credentials.expiresAt <= Date().timeIntervalSince1970 * 1000,
+           let refreshed = await refreshClaudeToken(credentials) {
+            accessToken = refreshed
+        }
+
+        var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            await MainActor.run { values[.claude] = Value(primary: "Nicht abrufbar", secondary: "Claude neu anmelden") }
+            return
+        }
+
+        let fiveHour = (json["five_hour"] as? [String: Any])?["utilization"]
+        let sevenDay = (json["seven_day"] as? [String: Any])?["utilization"]
+        let shortUsed = Int((fiveHour as? NSNumber)?.doubleValue ?? 0)
+        let weekUsed = Int((sevenDay as? NSNumber)?.doubleValue ?? 0)
+        await MainActor.run {
+            values[.claude] = Value(
+                primary: "5 Std.: \(shortUsed) %",
+                secondary: "Woche: \(weekUsed) %"
+            )
+        }
+    }
+
+    private struct ClaudeCredentials {
+        let accessToken: String
+        let refreshToken: String
+        let expiresAt: Double
+        let clientId: String
+        let scopes: [String]
+    }
+
+    private func loadClaudeCredentials() -> ClaudeCredentials? {
+        let names = ["Claude Code-credentials-5ea55c61", "Claude Code-credentials"]
+        for name in names {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+            process.arguments = ["find-generic-password", "-s", name, "-w"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+            guard (try? process.run()) != nil else { continue }
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { continue }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let oauth = json["claudeAiOauth"] as? [String: Any],
+                  let accessToken = oauth["accessToken"] as? String,
+                  let refreshToken = oauth["refreshToken"] as? String else { continue }
+            return ClaudeCredentials(
+                accessToken: accessToken,
+                refreshToken: refreshToken,
+                expiresAt: (oauth["expiresAt"] as? NSNumber)?.doubleValue ?? 0,
+                clientId: (oauth["clientId"] as? String) ?? "9d1c250a-e61b-44d9-88ed-26761c68b7e8",
+                scopes: (oauth["scopes"] as? [String]) ?? ["org:create_api_key", "user:profile", "user:inference"]
+            )
+        }
+        return nil
+    }
+
+    private func refreshClaudeToken(_ credentials: ClaudeCredentials) async -> String? {
+        var request = URLRequest(url: URL(string: "https://platform.claude.com/v1/oauth/token")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "grant_type": "refresh_token",
+            "refresh_token": credentials.refreshToken,
+            "client_id": credentials.clientId,
+            "scope": credentials.scopes.joined(separator: " ")
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let accessToken = json["access_token"] as? String else { return nil }
+        return accessToken
+    }
+
+    private func usageResetText(_ seconds: Int) -> String {
+        if seconds >= 86400 { return "\(seconds / 86400)d" }
+        if seconds >= 3600 { return "\(seconds / 3600)h" }
+        return "\(seconds / 60)m"
     }
 }
 
@@ -326,7 +410,7 @@ struct DeveloperUsageWidget: View {
     @StateObject private var usage = DeveloperUsageStore.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5 * s) {
+        VStack(alignment: .leading, spacing: 4 * s) {
             HStack(spacing: 5 * s) {
                 Image(systemName: "speedometer")
                     .foregroundStyle(Color.accentColor)
@@ -341,25 +425,29 @@ struct DeveloperUsageWidget: View {
                 .buttonStyle(.plain)
                 .help("Nutzung aktualisieren")
             }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4 * s) {
+            HStack(alignment: .top, spacing: 6 * s) {
                 ForEach(DeveloperUsageProvider.allCases) { provider in
                     Button { open(provider) } label: {
                         VStack(alignment: .leading, spacing: 2 * s) {
                             HStack(spacing: 4 * s) {
-                            Image(systemName: provider.symbol)
-                            Text(provider.title).font(.system(size: 9 * s, weight: .medium))
-                                .lineLimit(1).minimumScaleFactor(0.75)
-                            Spacer(minLength: 0)
-                            Image(systemName: "arrow.up.forward").font(.system(size: 7 * s))
-                        }
+                                Image(systemName: provider.symbol)
+                                Text(provider.title).font(.system(size: 9 * s, weight: .medium))
+                                    .lineLimit(1).minimumScaleFactor(0.75)
+                                Spacer(minLength: 0)
+                            }
                             let value = usage.value(for: provider)
-                            Text("Heute \(value.day)")
-                                .font(.system(size: 8 * s, weight: .semibold))
+                            Text(value.primary)
+                                .font(.system(size: 7 * s, weight: .semibold))
                                 .foregroundStyle(Color.accentColor)
-                            Text("Monat \(value.month)")
-                                .font(.system(size: 7 * s))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.55)
+                            Text(value.secondary)
+                                .font(.system(size: 6 * s))
                                 .foregroundStyle(Theme.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.55)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -367,13 +455,15 @@ struct DeveloperUsageWidget: View {
                     .help(provider.help)
                 }
             }
+            .frame(height: 34 * s)
             if let openError {
                 Text(openError).font(.system(size: 8 * s)).foregroundStyle(.orange).lineLimit(2)
             }
         }
         .tilePadding(s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { usage.refresh() }
-        .help("Lokale Tages-/Monatsnutzung anzeigen. Pfeil öffnet die offizielle Anbieterübersicht.")
+        .help("Echte Kontingentdaten; Klick öffnet die offizielle Anbieterübersicht.")
     }
 
     private func open(_ provider: DeveloperUsageProvider) {
@@ -390,7 +480,7 @@ struct DeveloperUsageWidget: View {
 }
 
 enum DeveloperUsageProvider: String, CaseIterable, Identifiable {
-    case claude, codex, copilot, cursor
+    case claude, codex, cursor
 
     var id: String { rawValue }
 
@@ -398,7 +488,6 @@ enum DeveloperUsageProvider: String, CaseIterable, Identifiable {
         switch self {
         case .claude: "Claude"
         case .codex: "Codex"
-        case .copilot: "Copilot"
         case .cursor: "Cursor"
         }
     }
@@ -407,7 +496,6 @@ enum DeveloperUsageProvider: String, CaseIterable, Identifiable {
         switch self {
         case .claude: "sparkle"
         case .codex: "sparkles"
-        case .copilot: "chevron.left.forwardslash.chevron.right"
         case .cursor: "cursorarrow.rays"
         }
     }
@@ -416,7 +504,6 @@ enum DeveloperUsageProvider: String, CaseIterable, Identifiable {
         switch self {
         case .claude: "https://claude.ai/settings/usage"
         case .codex: "https://chatgpt.com/codex/settings/usage"
-        case .copilot: "https://github.com/settings/billing"
         case .cursor: "https://cursor.com/settings"
         }
     }
@@ -425,7 +512,6 @@ enum DeveloperUsageProvider: String, CaseIterable, Identifiable {
         switch self {
         case .claude: "Claude-Plan und Verbrauch öffnen"
         case .codex: "Codex-Nutzungsübersicht öffnen"
-        case .copilot: "Copilot in VS Code und Coding Agent: GitHub-Nutzungsübersicht öffnen"
         case .cursor: "Cursor-Kontoeinstellungen öffnen"
         }
     }

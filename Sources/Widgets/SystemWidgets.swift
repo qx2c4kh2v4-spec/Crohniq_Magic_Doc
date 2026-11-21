@@ -714,6 +714,43 @@ struct PhotosWidget: View {
     }
 }
 
+private struct PanoramaScrollReceiver: NSViewRepresentable {
+    let onScroll: () -> Void
+    let onTap: () -> Void
+
+    final class WheelView: NSView {
+        var onScroll: (() -> Void)?
+        var onTap: (() -> Void)?
+        private var lastScrollTime = Date.distantPast
+
+        override var acceptsFirstResponder: Bool { false }
+
+        override func mouseDown(with event: NSEvent) {
+            onTap?()
+        }
+
+        override func scrollWheel(with event: NSEvent) {
+            let now = Date()
+            guard now.timeIntervalSince(lastScrollTime) > 0.35,
+                  abs(event.deltaY) > 0.2 || abs(event.deltaX) > 0.2 else {
+                super.scrollWheel(with: event)
+                return
+            }
+            lastScrollTime = now
+            onScroll?()
+        }
+    }
+
+    func makeNSView(context: Context) -> WheelView {
+        WheelView()
+    }
+
+    func updateNSView(_ nsView: WheelView, context: Context) {
+        nsView.onScroll = onScroll
+        nsView.onTap = onTap
+    }
+}
+
 private enum PanoramaSlide: Identifiable {
     case photo(PHAsset)
     case wallpaper(URL)
@@ -800,27 +837,30 @@ struct PanoramasHoverList: View {
                 }
                 .padding(.horizontal, 12)
             } else {
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(slides) { slide in
-                        Button {
-                            setWallpaper(slide)
-                        } label: {
-                            ZStack(alignment: .bottomLeading) {
-                                slideThumbnail(slide)
-                                    .frame(height: 70)
-                                Image(systemName: slide.symbol)
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(6)
-                                    .background(Capsule().fill(.black.opacity(0.55)))
-                                    .padding(5)
+                ScrollView(.vertical) {
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        ForEach(slides) { slide in
+                            Button {
+                                setWallpaper(slide)
+                            } label: {
+                                ZStack(alignment: .bottomLeading) {
+                                    slideThumbnail(slide)
+                                        .frame(height: 70)
+                                    Image(systemName: slide.symbol)
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(6)
+                                        .background(Capsule().fill(.black.opacity(0.55)))
+                                        .padding(5)
+                                }
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .buttonStyle(.plain)
+                            .help("Als Hintergrund für alle Monitore verwenden")
                         }
-                        .buttonStyle(.plain)
-                        .help("Als Hintergrund für alle Monitore verwenden")
                     }
                 }
+                .frame(maxHeight: 330)
                 .padding(.horizontal, 12)
             }
 
@@ -1023,12 +1063,21 @@ struct PanoramasWidget: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .contentShape(Rectangle())
-            .onTapGesture {
-                if slides.isEmpty && (library.authorization == .denied || library.authorization == .restricted) {
-                    PhotoLibrary.openPrivacySettings()
-                } else {
-                    advance()
-                }
+            .overlay {
+                PanoramaScrollReceiver(
+                    onScroll: { advance() },
+                    onTap: {
+                        let visibleSlides = slides
+                        guard !visibleSlides.isEmpty else {
+                            if library.authorization == .denied || library.authorization == .restricted {
+                                PhotoLibrary.openPrivacySettings()
+                            }
+                            return
+                        }
+                        let index = visibleSlides.isEmpty ? 0 : currentIndex % visibleSlides.count
+                        setWallpaper(visibleSlides[index])
+                    }
+                )
             }
             .animation(.easeInOut(duration: 0.8), value: currentIndex)
         }
@@ -1049,6 +1098,80 @@ struct PanoramasWidget: View {
     private func advance() {
         guard slides.count > 1 else { return }
         currentIndex = (currentIndex + 1) % slides.count
+    }
+
+    private func setWallpaper(_ slide: PanoramaSlide) {
+        switch slide {
+        case .wallpaper(let url):
+            setDesktopImage(from: url)
+        case .photo(let asset):
+            let size = NSScreen.screens.map { nativePixelSize(for: $0) }.max { $0.width * $0.height < $1.width * $1.height }
+                ?? (width: 1920, height: 1080)
+            PhotoLibrary.shared.requestImage(for: asset, size: CGSize(width: size.width, height: size.height)) { image in
+                guard let image else { return }
+                DispatchQueue.main.async { setDesktopImage(from: image) }
+            }
+        }
+    }
+
+    private func setDesktopImage(from url: URL) {
+        guard let image = NSImage(contentsOf: url) else { return }
+        setDesktopImage(from: image)
+    }
+
+    private func setDesktopImage(from source: NSImage) {
+        for screen in NSScreen.screens {
+            let size = nativePixelSize(for: screen)
+            guard let url = exportWallpaper(source, width: size.width, height: size.height, for: screen) else { continue }
+            try? NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [.allowClipping: true])
+        }
+    }
+
+    private func nativePixelSize(for screen: NSScreen) -> (width: Int, height: Int) {
+        if let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            let displayID = CGDirectDisplayID(number.uint32Value)
+            let width = CGDisplayPixelsWide(displayID)
+            let height = CGDisplayPixelsHigh(displayID)
+            if width > 0, height > 0 { return (width, height) }
+        }
+        return (max(1, Int(screen.frame.width * screen.backingScaleFactor)),
+                max(1, Int(screen.frame.height * screen.backingScaleFactor)))
+    }
+
+    private func exportWallpaper(_ source: NSImage, width: Int, height: Int, for screen: NSScreen) -> URL? {
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        let sourceSize = source.size
+        let scale = max(CGFloat(width) / max(sourceSize.width, 1),
+                        CGFloat(height) / max(sourceSize.height, 1))
+        let drawnSize = NSSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
+        let drawnRect = NSRect(
+            x: (CGFloat(width) - drawnSize.width) / 2,
+            y: (CGFloat(height) - drawnSize.height) / 2,
+            width: drawnSize.width,
+            height: drawnSize.height
+        )
+        source.draw(in: drawnRect, from: .zero, operation: .copy, fraction: 1)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]) else { return nil }
+        let displayIndex = NSScreen.screens.firstIndex(of: screen) ?? 0
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("crohniq-panorama-\(displayIndex)-\(width)x\(height).jpg")
+        try? jpeg.write(to: url)
+        return url
     }
 }
 

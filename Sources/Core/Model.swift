@@ -200,7 +200,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .colorPicker: [1, 2, 3]
         case .converter: [1, 2, 3, 4]
         case .github: [1, 2, 3, 4]
-        case .developerUsage: [3, 4]
+        case .developerUsage: [4]
         case .metric: [1, 2, 3]
         case .nexus: [2, 3, 4, 5, 6]
         case .workspaces: [1, 2, 3, 4, 5]
@@ -216,7 +216,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
              .notes, .search, .appSwitcher: 3
         case .screenshots: 3
         case .nowPlaying, .toggles, .nexus: 4
-        case .developerUsage: 3
+        case .developerUsage: 4
         case .workspaces, .launcher, .dropbox, .shortcuts, .appleIntelligence: 3
         case .panoramas: 4
         default: 1
