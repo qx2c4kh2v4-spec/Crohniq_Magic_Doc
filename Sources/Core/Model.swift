@@ -41,7 +41,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
     case pomodoro, timer, focus, water, calendar, reminders, progress, stopwatch, notes, mail
     case battery, cpu, memory, disk, cpuGraph, toggles, audio, clipboard, screenshots, voiceMemo, emoji, photos, panoramas
     case colorPicker, converter, github, developerUsage, metric
-    case nexus, appleIntelligence, workspaces, launcher, quitApps
+    case nexus, appleIntelligence, workspaces, launcher, quitApps, trash
 
     var id: String { rawValue }
 
@@ -97,6 +97,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .workspaces: "Arbeitsbereiche"
         case .launcher: "App-Starter"
         case .quitApps: "Apps beenden"
+        case .trash: "Papierkorb"
         }
     }
 
@@ -147,12 +148,13 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .workspaces: "rectangle.3.group"
         case .launcher: "app.badge"
         case .quitApps: "xmark.app"
+        case .trash: "trash"
         }
     }
 
     var category: WidgetCategory {
         switch self {
-        case .apps, .appSwitcher, .bookmarks, .fileShelf, .downloads, .finder, .dropbox, .shortcuts, .search, .nexus, .workspaces, .launcher: .apps
+        case .apps, .appSwitcher, .bookmarks, .fileShelf, .downloads, .finder, .dropbox, .shortcuts, .search, .nexus, .workspaces, .launcher, .trash: .apps
         case .clock, .quitApps, .pomodoro, .timer, .focus, .appleIntelligence, .water, .calendar, .reminders, .progress, .stopwatch, .mail: .productivity
         case .weather, .nowPlaying, .battery, .cpu, .memory, .disk, .cpuGraph, .toggles, .audio,
              .clipboard, .screenshots, .voiceMemo, .emoji, .photos, .panoramas, .quitApps: .system
@@ -206,6 +208,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .workspaces: [1, 2, 3, 4, 5]
         case .launcher: [1, 2, 3]
         case .quitApps: [1, 2, 3, 4, 5]
+        case .trash: [1, 2, 3]
         }
     }
 

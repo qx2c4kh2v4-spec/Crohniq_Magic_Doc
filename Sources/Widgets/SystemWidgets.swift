@@ -1065,7 +1065,7 @@ struct PanoramasWidget: View {
             .contentShape(Rectangle())
             .overlay {
                 PanoramaScrollReceiver(
-                    onScroll: { advance() },
+                    onScroll: { advanceAndSetWallpaper() },
                     onTap: {
                         let visibleSlides = slides
                         guard !visibleSlides.isEmpty else {
@@ -1082,7 +1082,7 @@ struct PanoramasWidget: View {
             .animation(.easeInOut(duration: 0.8), value: currentIndex)
         }
         .task { library.refresh() }
-        .onReceive(timer) { _ in advance() }
+        .onReceive(timer) { _ in advanceAndSetWallpaper() }
     }
 
     @ViewBuilder
@@ -1098,6 +1098,13 @@ struct PanoramasWidget: View {
     private func advance() {
         guard slides.count > 1 else { return }
         currentIndex = (currentIndex + 1) % slides.count
+    }
+
+    private func advanceAndSetWallpaper() {
+        guard !slides.isEmpty else { return }
+        advance()
+        let index = slides.isEmpty ? 0 : currentIndex % slides.count
+        setWallpaper(slides[index])
     }
 
     private func setWallpaper(_ slide: PanoramaSlide) {
@@ -1169,7 +1176,7 @@ struct PanoramasWidget: View {
         guard let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]) else { return nil }
         let displayIndex = NSScreen.screens.firstIndex(of: screen) ?? 0
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("crohniq-panorama-\(displayIndex)-\(width)x\(height).jpg")
+            .appendingPathComponent("crohniq-panorama-\(displayIndex)-\(width)x\(height)-\(UUID().uuidString).jpg")
         try? jpeg.write(to: url)
         return url
     }

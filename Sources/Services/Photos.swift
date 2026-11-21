@@ -63,7 +63,7 @@ final class PhotoLibrary: ObservableObject {
 
         for asset in fetched {
             let ratio = CGFloat(asset.pixelWidth) / CGFloat(max(asset.pixelHeight, 1))
-            if ratio >= 1.8 {
+            if asset.mediaSubtypes.contains(.photoPanorama) || ratio >= 1.5 {
                 if !fetchedPanoramas.contains(where: { $0.localIdentifier == asset.localIdentifier }) {
                     fetchedPanoramas.append(asset)
                 }

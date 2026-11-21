@@ -428,7 +428,7 @@ struct DeveloperUsageWidget: View {
             HStack(alignment: .top, spacing: 6 * s) {
                 ForEach(DeveloperUsageProvider.allCases) { provider in
                     Button { open(provider) } label: {
-                        VStack(alignment: .leading, spacing: 3 * s) {
+                        VStack(alignment: .leading, spacing: 2 * s) {
                             HStack(spacing: 4 * s) {
                                 Image(systemName: provider.symbol)
                                 Text(provider.title).font(.system(size: 9 * s, weight: .medium))
@@ -458,7 +458,7 @@ struct DeveloperUsageWidget: View {
                 }
             }
 
-            .frame(height: 34 * s)
+            .frame(height: 52 * s)
             if let openError {
                 Text(openError).font(.system(size: 8 * s)).foregroundStyle(.orange).lineLimit(2)
             }
@@ -490,11 +490,9 @@ private struct BottomHalfGauge: View {
             Circle()
                 .trim(from: 0.5, to: 1)
                 .stroke(Theme.fg.opacity(0.12), lineWidth: 5)
-                .rotationEffect(.degrees(90))
             Circle()
                 .trim(from: 0.5, to: 0.5 + 0.5 * (Double(percent ?? 0) / 100))
                 .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                .rotationEffect(.degrees(90))
                 .animation(.easeOut(duration: 0.4), value: percent)
             Text(percent.map { "\($0)%" } ?? "—")
                 .font(.system(size: 9, weight: .bold, design: .rounded))

@@ -638,6 +638,7 @@ struct WidgetHost: View {
         case .workspaces: WorkspacesWidget(w: instance)
         case .launcher: LauncherWidget(w: instance)
         case .quitApps: QuitAppsWidget(w: instance)
+        case .trash: TrashWidget(w: instance)
         }
     }
 }

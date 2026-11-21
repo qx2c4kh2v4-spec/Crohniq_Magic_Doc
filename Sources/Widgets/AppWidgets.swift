@@ -488,6 +488,87 @@ struct FileShelfWidget: View {
     private func set(_ l: [String]) { DockStore.shared.setConfig(w.id, "files", l.joined(separator: "\n")) }
 }
 
+struct TrashWidget: View {
+    let w: WidgetInstance
+    @Environment(\.dockScale) private var s
+    @State private var targeted = false
+    @State private var trashCount = 0
+    @State private var status = ""
+
+    var body: some View {
+        ZStack {
+            VStack(spacing: 2 * s) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: targeted ? "trash.fill" : "trash")
+                        .font(.system(size: 24 * s, weight: .semibold))
+                        .foregroundStyle(targeted ? Color.accentColor : Theme.fg)
+                    if trashCount > 0 {
+                        Text(trashCount > 99 ? "99+" : "\(trashCount)")
+                            .font(.system(size: 7 * s, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 3 * s)
+                            .frame(minWidth: 12 * s, minHeight: 12 * s)
+                            .background(Capsule().fill(Color.red))
+                            .offset(x: 7 * s, y: -5 * s)
+                    }
+                }
+                if w.size > 1 {
+                    Text(status.isEmpty ? "Papierkorb" : status)
+                        .font(.system(size: 8 * s, weight: .medium))
+                        .foregroundStyle(Theme.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .overlay {
+            if targeted {
+                RoundedRectangle(cornerRadius: 12 * s)
+                    .strokeBorder(Color.accentColor, lineWidth: 2 * s)
+            }
+        }
+        .tilePadding(s)
+        .onTapGesture {
+            Script.run("tell application \"Finder\" to open trash") { _ in }
+        }
+        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+            var moved = 0
+            for provider in providers {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    var resultingURL: NSURL?
+                    do {
+                        try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)
+                        DispatchQueue.main.async {
+                            moved += 1
+                            status = moved == 1 ? "1 Datei bewegt" : "\(moved) Dateien bewegt"
+                            refreshCount()
+                        }
+                    } catch {
+                        DispatchQueue.main.async { status = "Verschieben fehlgeschlagen" }
+                    }
+                }
+            }
+            return true
+        }
+        .onAppear { refreshCount() }
+        .contextMenu {
+            Button("Papierkorb öffnen") {
+                Script.run("tell application \"Finder\" to open trash") { _ in }
+            }
+            Button("Aktualisieren") { refreshCount() }
+        }
+    }
+
+    private func refreshCount() {
+        let trash = NSHomeDirectory() + "/.Trash"
+        trashCount = (try? FileManager.default.contentsOfDirectory(atPath: trash).count) ?? 0
+    }
+}
+
 // MARK: - Downloads
 
 struct DownloadsWidget: View {
