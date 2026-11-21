@@ -41,12 +41,13 @@ final class PhotoLibrary: ObservableObject {
         guard force || !didLoad else { return }
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.fetchLimit = 48
+        options.fetchLimit = 500
         let result = PHAsset.fetchAssets(with: .image, options: options)
         var fetched: [PHAsset] = []
         result.enumerateObjects { asset, _, _ in fetched.append(asset) }
         assets = fetched
 
+        var fetchedPanoramas: [PHAsset] = []
         let panoramaCollections = PHAssetCollection.fetchAssetCollections(
             with: .smartAlbum,
             subtype: .smartAlbumPanoramas,
@@ -55,13 +56,20 @@ final class PhotoLibrary: ObservableObject {
         if let collection = panoramaCollections.firstObject {
             let panoramaOptions = PHFetchOptions()
             panoramaOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            panoramaOptions.fetchLimit = 500
             let panoramaResult = PHAsset.fetchAssets(in: collection, options: panoramaOptions)
-            var fetchedPanoramas: [PHAsset] = []
             panoramaResult.enumerateObjects { asset, _, _ in fetchedPanoramas.append(asset) }
-            panoramas = fetchedPanoramas
-        } else {
-            panoramas = []
         }
+
+        for asset in fetched {
+            let ratio = CGFloat(asset.pixelWidth) / CGFloat(max(asset.pixelHeight, 1))
+            if ratio >= 1.8 {
+                if !fetchedPanoramas.contains(where: { $0.localIdentifier == asset.localIdentifier }) {
+                    fetchedPanoramas.append(asset)
+                }
+            }
+        }
+        panoramas = fetchedPanoramas
         didLoad = true
     }
 

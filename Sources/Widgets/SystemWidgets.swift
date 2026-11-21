@@ -835,36 +835,88 @@ struct PanoramasHoverList: View {
         case .wallpaper(let url):
             apply(url)
         case .photo(let asset):
-            PhotoLibrary.shared.requestImage(for: asset, size: CGSize(width: 3840, height: 2160)) { image in
-                guard let image,
-                      let tiff = image.tiffRepresentation,
-                      let bitmap = NSBitmapImageRep(data: tiff),
-                      let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]) else {
+            let largest = NSScreen.screens.map { screen in
+                CGSize(width: screen.frame.width * screen.backingScaleFactor,
+                       height: screen.frame.height * screen.backingScaleFactor)
+            }.max { $0.width * $0.height < $1.width * $1.height } ?? CGSize(width: 1920, height: 1080)
+            PhotoLibrary.shared.requestImage(for: asset, size: largest) { image in
+                guard let image else {
                     status = "Das Foto konnte nicht vorbereitet werden."
                     return
                 }
-                let url = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("crohniq-wallpaper-\(UUID().uuidString).jpg")
-                do {
-                    try jpeg.write(to: url)
-                    apply(url)
-                } catch {
-                    status = "Das Foto konnte nicht gespeichert werden."
-                }
+                apply(image)
             }
         }
     }
 
     private func apply(_ url: URL) {
+        guard let image = NSImage(contentsOf: url) else {
+            status = "Das Hintergrundbild konnte nicht geladen werden."
+            return
+        }
+        apply(image)
+    }
+
+    private func apply(_ source: NSImage) {
         var failed = false
         for screen in NSScreen.screens {
+            let width = max(1, Int(screen.frame.width * screen.backingScaleFactor))
+            let height = max(1, Int(screen.frame.height * screen.backingScaleFactor))
+            guard let url = export(source, width: width, height: height, for: screen) else {
+                failed = true
+                continue
+            }
             do {
                 try NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [:])
             } catch {
                 failed = true
             }
         }
-        status = failed ? "Einige Monitore konnten nicht aktualisiert werden." : "Hintergrundbild wurde gesetzt."
+        status = failed ? "Einige Monitore konnten nicht aktualisiert werden." : "Hintergrundbild wurde auf die Monitorauflösung gesetzt."
+    }
+
+    private func export(_ source: NSImage, width: Int, height: Int, for screen: NSScreen) -> URL? {
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSGraphicsContext.current?.imageInterpolation = .high
+
+        let target = NSRect(x: 0, y: 0, width: width, height: height)
+        let sourceSize = source.size
+        let scale = max(CGFloat(width) / max(sourceSize.width, 1),
+                        CGFloat(height) / max(sourceSize.height, 1))
+        let drawnSize = NSSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
+        let drawnRect = NSRect(
+            x: (CGFloat(width) - drawnSize.width) / 2,
+            y: (CGFloat(height) - drawnSize.height) / 2,
+            width: drawnSize.width,
+            height: drawnSize.height
+        )
+        source.draw(in: drawnRect, from: .zero, operation: .copy, fraction: 1)
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]) else { return nil }
+        let displayIndex = NSScreen.screens.firstIndex(of: screen) ?? 0
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("crohniq-wallpaper-\(displayIndex)-\(width)x\(height).jpg")
+        do {
+            try jpeg.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
     }
 }
 
