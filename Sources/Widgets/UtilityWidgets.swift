@@ -256,6 +256,7 @@ final class DeveloperUsageStore: ObservableObject {
     struct Value {
         var primary = "Wird geladen …"
         var secondary = "Wird geladen …"
+        var usedPercent: Int?
     }
 
     @Published private(set) var values: [DeveloperUsageProvider: Value] = [:]
@@ -304,7 +305,8 @@ final class DeveloperUsageStore: ObservableObject {
         await MainActor.run {
             values[.codex] = Value(
                 primary: "Verbraucht: \(used) %",
-                secondary: resetText
+                secondary: resetText,
+                usedPercent: used
             )
         }
     }
@@ -338,7 +340,8 @@ final class DeveloperUsageStore: ObservableObject {
         await MainActor.run {
             values[.claude] = Value(
                 primary: "5 Std.: \(shortUsed) %",
-                secondary: "Woche: \(weekUsed) %"
+                secondary: "Woche: \(weekUsed) %",
+                usedPercent: max(shortUsed, weekUsed)
             )
         }
     }
@@ -412,9 +415,6 @@ struct DeveloperUsageWidget: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4 * s) {
             HStack(spacing: 5 * s) {
-                Image(systemName: "speedometer")
-                    .foregroundStyle(Color.accentColor)
-                Text("Kontingente").font(.system(size: 10 * s, weight: .semibold))
                 Spacer(minLength: 0)
                 Button {
                     usage.refresh()
@@ -428,7 +428,7 @@ struct DeveloperUsageWidget: View {
             HStack(alignment: .top, spacing: 6 * s) {
                 ForEach(DeveloperUsageProvider.allCases) { provider in
                     Button { open(provider) } label: {
-                        VStack(alignment: .leading, spacing: 2 * s) {
+                        VStack(alignment: .leading, spacing: 3 * s) {
                             HStack(spacing: 4 * s) {
                                 Image(systemName: provider.symbol)
                                 Text(provider.title).font(.system(size: 9 * s, weight: .medium))
@@ -436,6 +436,8 @@ struct DeveloperUsageWidget: View {
                                 Spacer(minLength: 0)
                             }
                             let value = usage.value(for: provider)
+                            BottomHalfGauge(percent: value.usedPercent)
+                                .frame(height: 28 * s)
                             Text(value.primary)
                                 .font(.system(size: 7 * s, weight: .semibold))
                                 .foregroundStyle(Color.accentColor)
@@ -455,6 +457,7 @@ struct DeveloperUsageWidget: View {
                     .help(provider.help)
                 }
             }
+
             .frame(height: 34 * s)
             if let openError {
                 Text(openError).font(.system(size: 8 * s)).foregroundStyle(.orange).lineLimit(2)
@@ -476,6 +479,30 @@ struct DeveloperUsageWidget: View {
             return
         }
         openError = nil
+    }
+}
+
+private struct BottomHalfGauge: View {
+    let percent: Int?
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Circle()
+                .trim(from: 0.5, to: 1)
+                .stroke(Theme.fg.opacity(0.12), lineWidth: 5)
+                .rotationEffect(.degrees(90))
+            Circle()
+                .trim(from: 0.5, to: 0.5 + 0.5 * (Double(percent ?? 0) / 100))
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .rotationEffect(.degrees(90))
+                .animation(.easeOut(duration: 0.4), value: percent)
+            Text(percent.map { "\($0)%" } ?? "—")
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(percent == nil ? Theme.secondary : Color.accentColor)
+                .padding(.bottom, 2)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
