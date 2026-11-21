@@ -41,7 +41,7 @@ final class PhotoLibrary: ObservableObject {
         guard force || !didLoad else { return }
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.fetchLimit = 500
+        options.fetchLimit = 5000
         let result = PHAsset.fetchAssets(with: .image, options: options)
         var fetched: [PHAsset] = []
         result.enumerateObjects { asset, _, _ in fetched.append(asset) }
@@ -56,7 +56,7 @@ final class PhotoLibrary: ObservableObject {
         if let collection = panoramaCollections.firstObject {
             let panoramaOptions = PHFetchOptions()
             panoramaOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            panoramaOptions.fetchLimit = 500
+            panoramaOptions.fetchLimit = 5000
             let panoramaResult = PHAsset.fetchAssets(in: collection, options: panoramaOptions)
             panoramaResult.enumerateObjects { asset, _, _ in fetchedPanoramas.append(asset) }
         }
@@ -118,6 +118,24 @@ final class PhotoLibrary: ObservableObject {
                 guard !url.pathComponents.contains(".thumbnails"),
                       !url.path.localizedCaseInsensitiveContains("/.thumbnails/") else { continue }
                 wallpapers.insert(url)
+            }
+        }
+
+        let desktopPictures = URL(fileURLWithPath: "/System/Library/Desktop Pictures", isDirectory: true)
+        if let enumerator = fileManager.enumerator(
+            at: desktopPictures,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles],
+            errorHandler: nil
+        ) {
+            for case let url as URL in enumerator
+            where url.pathExtension.lowercased() == "madesktop" {
+                guard let plist = NSDictionary(contentsOf: url),
+                      let thumbnail = plist["thumbnailPath"] as? String else { continue }
+                let thumbnailURL = URL(fileURLWithPath: thumbnail)
+                if fileManager.isReadableFile(atPath: thumbnailURL.path) {
+                    wallpapers.insert(thumbnailURL)
+                }
             }
         }
 

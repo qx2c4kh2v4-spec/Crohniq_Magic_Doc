@@ -785,9 +785,20 @@ struct PanoramasHoverList: View {
             .padding(.horizontal, 12)
 
             if slides.isEmpty {
-                Text("Keine Panorama-Fotos oder Apple-Hintergrundbilder gefunden.")
-                    .foregroundStyle(Theme.secondary)
-                    .padding(.horizontal, 12)
+                VStack(alignment: .leading, spacing: 8) {
+                    if library.authorization == .denied || library.authorization == .restricted {
+                        Button("Fotos-Zugriff erlauben") {
+                            PhotoLibrary.openPrivacySettings()
+                        }
+                    } else if library.authorization == .notDetermined {
+                        Button("Fotos-Zugriff anfordern") {
+                            library.refresh(force: true)
+                        }
+                    }
+                    Text("Keine Panorama-Fotos oder Apple-Hintergrundbilder gefunden.")
+                        .foregroundStyle(Theme.secondary)
+                }
+                .padding(.horizontal, 12)
             } else {
                 LazyVGrid(columns: columns, spacing: 8) {
                     ForEach(slides) { slide in
@@ -841,10 +852,10 @@ struct PanoramasHoverList: View {
             }.max { $0.width * $0.height < $1.width * $1.height } ?? CGSize(width: 1920, height: 1080)
             PhotoLibrary.shared.requestImage(for: asset, size: largest) { image in
                 guard let image else {
-                    status = "Das Foto konnte nicht vorbereitet werden."
+                    DispatchQueue.main.async { status = "Das Foto konnte nicht vorbereitet werden." }
                     return
                 }
-                apply(image)
+                DispatchQueue.main.async { apply(image) }
             }
         }
     }
