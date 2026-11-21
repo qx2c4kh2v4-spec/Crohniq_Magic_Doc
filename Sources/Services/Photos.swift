@@ -88,7 +88,8 @@ final class PhotoLibrary: ObservableObject {
         let fileManager = FileManager.default
         let roots = [
             URL(fileURLWithPath: "/System/Library/Desktop Pictures", isDirectory: true),
-            URL(fileURLWithPath: "/Library/Desktop Pictures", isDirectory: true)
+            URL(fileURLWithPath: "/Library/Desktop Pictures", isDirectory: true),
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Desktop Pictures", isDirectory: true)
         ]
         let imageExtensions: Set<String> = ["heic", "jpeg", "jpg", "png", "tif", "tiff"]
         var wallpapers = Set<URL>()

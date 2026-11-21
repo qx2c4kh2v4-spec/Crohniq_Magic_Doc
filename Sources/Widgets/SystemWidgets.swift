@@ -784,12 +784,7 @@ struct PanoramasHoverList: View {
             }
             .padding(.horizontal, 12)
 
-            if library.authorization == .denied || library.authorization == .restricted {
-                Button("Fotos-Zugriff erlauben") {
-                    PhotoLibrary.openPrivacySettings()
-                }
-                .padding(.horizontal, 12)
-            } else if slides.isEmpty {
+            if slides.isEmpty {
                 Text("Keine Panorama-Fotos oder Apple-Hintergrundbilder gefunden.")
                     .foregroundStyle(Theme.secondary)
                     .padding(.horizontal, 12)
