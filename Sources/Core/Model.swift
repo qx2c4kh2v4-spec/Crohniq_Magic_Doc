@@ -37,7 +37,7 @@ struct ConfigField {
 }
 
 enum WidgetKind: String, Codable, CaseIterable, Identifiable {
-    case clock, weather, nowPlaying, apps, appSwitcher, bookmarks, fileShelf, downloads, search
+    case clock, weather, nowPlaying, apps, appSwitcher, bookmarks, fileShelf, downloads, finder, search
     case pomodoro, water, calendar, reminders, progress, stopwatch, notes, mail
     case battery, cpu, memory, disk, cpuGraph, toggles, audio, clipboard, screenshots, voiceMemo, emoji, photos
     case colorPicker, converter, github, metric
@@ -60,6 +60,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .bookmarks: "Lesezeichen"
         case .fileShelf: "Ablage"
         case .downloads: "Downloads"
+        case .finder: "Finder"
         case .search: "Suche"
         case .pomodoro: "Pomodoro"
         case .water: "Trinken"
@@ -76,7 +77,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .cpuGraph: "CPU-Verlauf"
         case .toggles: "Schnellschalter"
         case .audio: "Lautstärke"
-        case .clipboard: "Zwischenablage"
+        case .clipboard: "Copy & Paste"
         case .screenshots: "Bildschirmfotos"
         case .voiceMemo: "Sprachmemo"
         case .emoji: "Emoji"
@@ -102,6 +103,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .bookmarks: "bookmark"
         case .fileShelf: "tray"
         case .downloads: "arrow.down.circle"
+        case .finder: "folder"
         case .search: "magnifyingglass"
         case .pomodoro: "timer"
         case .water: "drop"
@@ -136,7 +138,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
 
     var category: WidgetCategory {
         switch self {
-        case .apps, .appSwitcher, .bookmarks, .fileShelf, .downloads, .search, .nexus, .workspaces, .launcher: .apps
+        case .apps, .appSwitcher, .bookmarks, .fileShelf, .downloads, .finder, .search, .nexus, .workspaces, .launcher: .apps
         case .clock, .quitApps, .pomodoro, .water, .calendar, .reminders, .progress, .stopwatch, .mail: .productivity
         case .weather, .nowPlaying, .battery, .cpu, .memory, .disk, .cpuGraph, .toggles, .audio,
              .clipboard, .screenshots, .voiceMemo, .emoji, .photos, .quitApps: .system
@@ -156,6 +158,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .bookmarks: [1, 2, 3, 4, 5]
         case .fileShelf: [1, 2, 3, 4]
         case .downloads: [1, 2, 3]
+        case .finder: [1, 2, 3]
         case .search: [2, 3, 4, 5]
         case .pomodoro: [1, 2, 3]
         case .water: [1, 2, 3]
@@ -208,12 +211,13 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .water: ["goal": "8", "interval": "45"]
         case .progress: ["mode": "year"]
         case .emoji: ["emojis": "😂✨✅🔥🥹🙏💡🚀❤️👍🎉😎"]
-        case .photos: ["folder": NSHomeDirectory() + "/Pictures", "interval": "10"]
         case .converter: ["from": "EUR", "to": "CHF", "amount": "100"]
         case .github: ["user": "", "token": ""]
         case .metric: ["title": "Besucher · 7 Tage", "url": "", "path": "", "header": "", "prefix": "", "suffix": "", "interval": "15"]
         case .reminders: ["list": ""]
-        case .launcher: ["apps": "/Applications/Xcode.app"]
+        case .launcher:
+            ["apps": (["/Applications/Xcode.app"] + ["/Applications/Safari.app", "/Applications/Firefox.app"]
+                .filter { FileManager.default.fileExists(atPath: $0) }).joined(separator: "\n")]
         default: [:]
         }
     }
@@ -238,7 +242,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
              ConfigField(key: "items", label: "Eigene Liste (Name|URL pro Zeile)", kind: .multiline)]
         case .launcher:
             [ConfigField(key: "apps", label: "Apps (ein Pfad pro Zeile, nebeneinander)", kind: .multiline,
-                         help: "Apps einfach auf das Widget ziehen oder über das ＋ hinzufügen. Dateien, die du auf ein App-Symbol ziehst, werden bei dieser App angeheftet. Beim Überfahren eines Symbols rollen seine zuletzt verwendeten Projekte auf.")]
+                         help: "Apps einfach auf das Widget ziehen oder über das ＋ hinzufügen. Beim Überfahren erscheinen zuletzt verwendete Dateien; für Safari und Firefox auch die letzten besuchten Seiten.")]
         case .nexus:
             [ConfigField(key: "mode", label: "Enter startet", kind: .choice([("search", "Nexus-Suche"), ("ai", "KI (Apple Intelligence)")]),
                          help: "Mit ✨ wechselst du jederzeit zwischen Suche und KI. Die KI läuft lokal auf dem Mac.")]
@@ -258,9 +262,6 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
             [ConfigField(key: "list", label: "Liste", placeholder: "leer = alle Listen")]
         case .emoji:
             [ConfigField(key: "emojis", label: "Emojis", placeholder: "😂✨✅")]
-        case .photos:
-            [ConfigField(key: "folder", label: "Bilder-Ordner"),
-             ConfigField(key: "interval", label: "Wechsel alle … Minuten", kind: .number)]
         case .converter:
             [ConfigField(key: "from", label: "Von Währung", placeholder: "EUR"),
              ConfigField(key: "to", label: "Nach Währung", placeholder: "CHF")]
@@ -391,11 +392,30 @@ final class DockStore: ObservableObject {
             if !Hardware.hasBattery {
                 for i in profiles.indices { profiles[i].widgets.removeAll { !$0.kind.isAvailable } }
             }
+            if !UserDefaults.standard.bool(forKey: "migrated.requestedWidgets") {
+                UserDefaults.standard.set(true, forKey: "migrated.requestedWidgets")
+                for kind in [WidgetKind.audio, .clipboard, .screenshots, .finder]
+                    where !profiles[0].widgets.contains(where: { $0.kind == kind }) {
+                    profiles[0].widgets.append(WidgetInstance(kind))
+                }
+                if let launcherIndex = profiles[0].widgets.firstIndex(where: { $0.kind == .launcher }) {
+                    var launcher = profiles[0].widgets[launcherIndex]
+                    var apps = launcher.launcherApps
+                    for path in ["/Applications/Safari.app", "/Applications/Firefox.app"]
+                        where FileManager.default.fileExists(atPath: path) && !apps.contains(path) {
+                        apps.append(path)
+                    }
+                    launcher.config["apps"] = apps.joined(separator: "\n")
+                    profiles[0].widgets[launcherIndex] = launcher
+                }
+                save()
+            }
         } else {
             let main = DockProfile(name: "Standard", widgets: [
                 WidgetInstance(.clock), WidgetInstance(.weather), WidgetInstance(.nexus),
                 WidgetInstance(.workspaces), WidgetInstance(.bookmarks), WidgetInstance(.launcher),
                 WidgetInstance(Hardware.hasBattery ? .battery : .cpu), WidgetInstance(.calendar), WidgetInstance(.nowPlaying),
+                WidgetInstance(.audio), WidgetInstance(.clipboard), WidgetInstance(.screenshots), WidgetInstance(.finder),
             ])
             let focus = DockProfile(name: "Fokus", widgets: [
                 WidgetInstance(.clock), WidgetInstance(.pomodoro), WidgetInstance(.reminders),

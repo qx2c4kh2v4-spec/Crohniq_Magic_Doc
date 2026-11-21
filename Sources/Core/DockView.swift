@@ -267,9 +267,12 @@ struct TileContainer: View {
         case .calendar: AnyView(CalendarHoverList())
         case .reminders: AnyView(RemindersHoverList(list: instance.cfg("list")))
         case .notes: AnyView(NotesHoverList())
+        case .mail: AnyView(MailHoverList())
         case .clock: AnyView(ClockHoverList(w: instance))
         case .weather: AnyView(WeatherHoverList(city: instance.cfg("city", "auto")))
         case .nowPlaying: AnyView(MusicHoverList())
+        case .photos: AnyView(PhotosHoverList())
+        case .finder: AnyView(FinderHoverList())
         default: nil
         }
     }
@@ -324,7 +327,10 @@ struct TileContainer: View {
             Divider()
         case .photos:
             Button("Nächstes Bild") { WidgetAction.post(id, "next") }
-            Button("Im Finder zeigen") { WidgetAction.post(id, "reveal") }
+            Button("Fotos öffnen") { WidgetAction.post(id, "reveal") }
+            Divider()
+        case .finder:
+            Button("Finder öffnen") { WidgetAction.post(id, "open") }
             Divider()
         case .launcher:
             Button("Apps hinzufügen …") { WidgetAction.post(id, "pickApp") }
@@ -434,6 +440,7 @@ struct WidgetHost: View {
         case .voiceMemo: VoiceMemoWidget(w: instance)
         case .emoji: EmojiWidget(w: instance)
         case .photos: PhotosWidget(w: instance)
+        case .finder: FinderWidget(w: instance)
         case .colorPicker: ColorPickerWidget(w: instance)
         case .converter: ConverterWidget(w: instance)
         case .github: GitHubWidget(w: instance)

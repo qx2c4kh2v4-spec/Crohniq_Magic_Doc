@@ -1,6 +1,165 @@
 import EventKit
 import SwiftUI
 
+struct FinderHoverList: View {
+    @State private var recent: [URL] = []
+
+    private var folders: [(String, String, String)] {
+        [
+            ("Benutzerordner", NSHomeDirectory(), "house"),
+            ("Schreibtisch", NSHomeDirectory() + "/Desktop", "menubar.dock.rectangle"),
+            ("Dokumente", NSHomeDirectory() + "/Documents", "doc"),
+            ("Downloads", NSHomeDirectory() + "/Downloads", "arrow.down.circle"),
+            ("Programme", "/Applications", "square.grid.2x2"),
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: "/System/Library/CoreServices/Finder.app"))
+                    .resizable().frame(width: 24, height: 24)
+                Text("Finder").font(.headline)
+                Spacer()
+                Button("Öffnen") { open(NSHomeDirectory()) }.controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ORDNER").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                ForEach(folders, id: \.1) { name, path, symbol in
+                    Button { open(path) } label: {
+                        Label(name, systemImage: symbol).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+
+            if !recent.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ZULETZT GEÖFFNET").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                    ForEach(recent.prefix(10), id: \.self) { url in
+                        Button { NSWorkspace.shared.open(url); HoverPanel.shared.close() } label: {
+                            Label(url.lastPathComponent, systemImage: "doc")
+                                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+        }
+        .onAppear {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = AppLauncher.recentDocuments(bundleID: "com.apple.finder", limit: 10)
+                DispatchQueue.main.async { recent = result }
+            }
+        }
+    }
+
+    private func open(_ path: String) {
+        NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
+        HoverPanel.shared.close()
+    }
+}
+
+private struct MailPreview: Identifiable {
+    let id = UUID()
+    let subject: String
+    let sender: String
+    let received: String
+}
+
+struct MailHoverList: View {
+    @State private var messages: [MailPreview] = []
+    @State private var loading = true
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Letzte 10 Mails", systemImage: "envelope")
+                    .font(.headline)
+                Spacer()
+                Button("Mail öffnen") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Mail.app"))
+                }
+                .controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+
+            if loading {
+                ProgressView().controlSize(.small).padding(.horizontal, 12)
+            } else if let error {
+                Text(error).font(.callout).foregroundStyle(Theme.secondary).padding(.horizontal, 12)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(messages) { message in
+                            Button {
+                                NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Mail.app"))
+                                HoverPanel.shared.close()
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(message.subject.isEmpty ? "(Ohne Betreff)" : message.subject)
+                                        .font(.callout.weight(.medium)).lineLimit(1)
+                                    HStack {
+                                        Text(message.sender).lineLimit(1)
+                                        Spacer()
+                                        Text(message.received).lineLimit(1)
+                                    }
+                                    .font(.caption).foregroundStyle(Theme.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Divider().padding(.horizontal, 12)
+                        }
+                    }
+                }
+                .frame(maxHeight: 360)
+            }
+        }
+        .onAppear(perform: load)
+    }
+
+    private func load() {
+        let source = """
+        tell application "Mail"
+            set total to count of messages of inbox
+            set amount to total
+            if amount > 10 then set amount to 10
+            set separator to character id 31
+            set rowSeparator to character id 30
+            set output to ""
+            repeat with i from 1 to amount
+                set m to message i of inbox
+                set output to output & (subject of m as text) & separator & (sender of m as text) & separator & ((date received of m) as text) & rowSeparator
+            end repeat
+            return output
+        end tell
+        """
+        Script.run(source) { result in
+            guard let raw = result?.stringValue else {
+                error = "Mail-Verlauf konnte nicht geladen werden. Mail-Zugriff prüfen."
+                loading = false
+                return
+            }
+            messages = raw.split(separator: "\u{1e}", omittingEmptySubsequences: true).compactMap { row in
+                let fields = row.split(separator: "\u{1f}", maxSplits: 2, omittingEmptySubsequences: false)
+                guard fields.count == 3 else { return nil }
+                return MailPreview(subject: String(fields[0]), sender: String(fields[1]), received: String(fields[2]))
+            }
+            error = messages.isEmpty ? "Im Posteingang sind keine Mails." : nil
+            loading = false
+        }
+    }
+}
+
 // MARK: - Calendar list
 
 struct CalendarHoverList: View {
@@ -372,11 +531,17 @@ struct LauncherHoverList: View {
     let w: WidgetInstance
     let app: String
     @State private var recent: [URL] = []
+    @State private var browserHistory: [BrowserVisit] = []
+    @State private var browserHistoryError: String?
     @State private var loaded = false
 
     private var appPath: String { app }
     private var pinned: [String] { DockStore.shared.instance(w.id)?.pinnedFiles(for: app) ?? w.pinnedFiles(for: app) }
     private var appName: String { FileManager.default.displayName(atPath: appPath).replacingOccurrences(of: ".app", with: "") }
+    private var browserBundleID: String? {
+        let bundleID = Bundle(path: appPath)?.bundleIdentifier
+        return ["com.apple.Safari", "org.mozilla.firefox"].contains(bundleID ?? "") ? bundleID : nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -393,6 +558,20 @@ struct LauncherHoverList: View {
                     if !pinned.isEmpty {
                         Text("ANGEHEFTET").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
                         ForEach(pinned, id: \.self) { row($0, pinnedRow: true) }
+                        Divider()
+                    }
+                    if let browserBundleID {
+                        Text(browserBundleID == "com.apple.Safari" ? "SAFARI-VERLAUF" : "FIREFOX-VERLAUF")
+                            .font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                        if !loaded {
+                            ProgressView().controlSize(.small)
+                        } else if browserHistory.isEmpty {
+                            Text(browserHistoryError ?? "Kein Browserverlauf gefunden.")
+                                .font(.callout).foregroundStyle(Theme.secondary)
+                        }
+                        ForEach(browserHistory.prefix(10)) { visit in
+                            browserRow(visit)
+                        }
                         Divider()
                     }
                     Text("ZULETZT VERWENDET").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
@@ -415,8 +594,35 @@ struct LauncherHoverList: View {
         guard let bid = Bundle(path: appPath)?.bundleIdentifier else { loaded = true; return }
         DispatchQueue.global(qos: .userInitiated).async {
             let r = AppLauncher.recentDocuments(bundleID: bid, limit: 20)
-            DispatchQueue.main.async { recent = r; loaded = true }
+            let history = browserBundleID.map { BrowserHistory.load(bundleID: $0) }
+            DispatchQueue.main.async {
+                recent = r
+                browserHistory = history?.visits ?? []
+                browserHistoryError = history?.error
+                loaded = true
+            }
         }
+    }
+
+    private func browserRow(_ visit: BrowserVisit) -> some View {
+        Button {
+            NSWorkspace.shared.open(visit.url)
+            HoverPanel.shared.close()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "globe").foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(visit.title).font(.callout.weight(.medium)).lineLimit(1)
+                    Text(visit.url.host ?? visit.url.absoluteString)
+                        .font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Text(visit.visitedAt.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2).foregroundStyle(Theme.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func row(_ path: String, pinnedRow: Bool) -> some View {

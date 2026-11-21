@@ -78,10 +78,12 @@ final class DockPanelController: NSObject, NSWindowDelegate {
     }
 
     private func targetFrame() -> NSRect {
-        let size = store.contentSize
         let s = store.settings
         let vis = screen.visibleFrame
         let margin = CGFloat(s.margin)
+        var size = store.contentSize
+        size.width = min(size.width, max(1, vis.width - margin * 2))
+        size.height = min(size.height, max(1, vis.height - margin * 2))
         let cx = s.along.map { vis.minX + vis.width * $0 } ?? vis.midX
         let cy = s.along.map { vis.minY + vis.height * $0 } ?? vis.midY
         var origin: NSPoint
@@ -97,6 +99,11 @@ final class DockPanelController: NSObject, NSWindowDelegate {
         case .free:
             if let x = s.freeX, let y = s.freeY {
                 origin = NSPoint(x: x, y: y)
+                let savedFrame = NSRect(origin: origin, size: size)
+                let visibleFrame = vis.insetBy(dx: margin, dy: margin)
+                if !visibleFrame.intersects(savedFrame) {
+                    origin = NSPoint(x: vis.midX - size.width / 2, y: vis.minY + margin)
+                }
             } else {
                 origin = NSPoint(x: vis.midX - size.width / 2, y: vis.minY + margin)
             }

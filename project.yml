@@ -31,6 +31,7 @@ targets:
         NSLocationUsageDescription: Das Wetter-Widget zeigt das Wetter an deinem aktuellen Standort.
         NSLocationWhenInUseUsageDescription: Das Wetter-Widget zeigt das Wetter an deinem aktuellen Standort.
         NSMicrophoneUsageDescription: Das Sprachmemo-Widget nimmt Audio auf.
+        NSPhotoLibraryUsageDescription: Das Fotos-Widget zeigt Bilder aus deiner Apple-Fotomediathek an.
         NSAppleEventsUsageDescription: Crohniq Dock steuert Musik, Spotify, Mail, Notizen, Kalender und Systemeinstellungen für die Widgets.
     entitlements:
       path: CrohniqDock.entitlements

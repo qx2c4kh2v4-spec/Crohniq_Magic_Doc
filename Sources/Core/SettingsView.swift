@@ -119,7 +119,7 @@ struct GeneralSettings: View {
             Section("Freigaben") {
                 PermissionRow(title: "Bedienungshilfen", detail: "Fenster in Arbeitsbereichen anordnen",
                               granted: WorkspaceManager.hasAccessibility) { WorkspaceManager.requestAccessibility() }
-                PermissionRow(title: "Festplattenvollzugriff", detail: "Safari-Lesezeichen lesen",
+                PermissionRow(title: "Festplattenvollzugriff", detail: "Safari-Lesezeichen und Browserverlauf lesen",
                               granted: !SafariBookmarks.shared.accessDenied) { SafariBookmarks.openFullDiskAccessSettings() }
             }
         }
@@ -251,7 +251,11 @@ struct WidgetSettings: View {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 14) {
                                 HStack(spacing: 12) {
-                                    PreviewTile(kind: w.kind) {}.id(w.id).allowsHitTesting(false)
+                                    if w.kind == .launcher {
+                                        LauncherPreview(w: w)
+                                    } else {
+                                        PreviewTile(kind: w.kind) {}.id(w.id).allowsHitTesting(false)
+                                    }
                                     Spacer()
                                 }
                                 .padding(.horizontal, 20).padding(.top, 20)
@@ -274,6 +278,31 @@ struct WidgetSettings: View {
             .frame(minWidth: 460)
         }
         .navigationTitle("In der Leiste")
+    }
+}
+
+struct LauncherPreview: View {
+    let w: WidgetInstance
+
+    private let unit: CGFloat = 60
+    private let gap: CGFloat = 8
+
+    var body: some View {
+        let size = w.size
+        let width = CGFloat(size) * unit + CGFloat(max(0, size - 1)) * gap
+        let palette = ThemeState.shared.palette
+
+        WidgetHost(instance: w)
+            .frame(width: width, height: unit)
+            .background(RoundedRectangle(cornerRadius: unit * 0.26, style: .continuous).fill(palette.tile))
+            .clipShape(RoundedRectangle(cornerRadius: unit * 0.26, style: .continuous))
+            .environment(\.dockScale, unit / 64)
+            .environment(\.colorScheme, palette.dark ? .dark : .light)
+            .foregroundStyle(palette.fg)
+            .allowsHitTesting(false)
+            .padding(5)
+            .background(RoundedRectangle(cornerRadius: unit * 0.26 + 5, style: .continuous).fill(palette.bar))
+            .id(w.id.uuidString + "|" + w.launcherApps.joined(separator: "|"))
     }
 }
 

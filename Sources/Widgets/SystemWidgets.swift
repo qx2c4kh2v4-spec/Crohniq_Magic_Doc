@@ -1,4 +1,5 @@
 import CoreWLAN
+import Photos
 import SwiftUI
 
 // MARK: - Rings (battery, CPU, memory, disk)
@@ -148,40 +149,39 @@ struct AudioWidget: View {
 
     var body: some View {
         if w.size == 1 {
-            VStack(spacing: 3 * s) {
-                Image(systemName: audio.muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 18 * s))
+            VStack(spacing: 1 * s) {
+                Image(systemName: audio.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 16 * s))
+                VolumeSlider(value: Binding(get: { Double(audio.volume) }, set: { audio.setVolume(Float($0)) }))
+                    .frame(width: 16 * s, height: 28 * s)
                 Text("\(Int(audio.volume * 100))%").font(.system(size: 11 * s, weight: .semibold)).monospacedDigit()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onTapGesture { audio.setMuted(!audio.muted) }
-            .gesture(DragGesture(minimumDistance: 2).onChanged { v in
-                audio.setVolume(Float(max(0, min(1, Double(audio.volume) - v.translation.height / 400))))
-            })
-            .help("Klick = stumm, ziehen = Lautstärke · \(audio.deviceName)")
+            .help("Vertikaler Regler: nach oben lauter, nach unten leiser · \(audio.deviceName)")
+            .onTapGesture(count: 2) { audio.setMuted(!audio.muted) }
         } else {
-        HStack(spacing: 10 * s) {
-            Button { audio.setMuted(!audio.muted) } label: {
-                Image(systemName: audio.muted ? "speaker.slash.fill" : (audio.volume > 0.5 ? "speaker.wave.3.fill" : "speaker.wave.1.fill"))
-                    .font(.system(size: 14 * s))
-                    .frame(width: 22 * s)
-            }
-            .buttonStyle(.plain)
-            VStack(alignment: .leading, spacing: 4 * s) {
-                Text(audio.deviceName).font(.system(size: 11 * s, weight: .medium)).lineLimit(1)
-                VolumeSlider(value: Binding(get: { Double(audio.volume) }, set: { audio.setVolume(Float($0)) }))
-                    .frame(height: 14 * s)
-            }
-            Text("\(Int(audio.volume * 100))%").font(.system(size: 11 * s, weight: .semibold)).monospacedDigit()
-                .foregroundStyle(Theme.secondary)
-            if w.size >= 4 {
-                CircleButton(symbol: "airpodspro", size: 30) {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!)
+            HStack(spacing: 10 * s) {
+                Button { audio.setMuted(!audio.muted) } label: {
+                    Image(systemName: audio.muted ? "speaker.slash.fill" : (audio.volume > 0.5 ? "speaker.wave.3.fill" : "speaker.wave.1.fill"))
+                        .font(.system(size: 14 * s))
+                        .frame(width: 22 * s)
                 }
-                .help("Ausgabegerät wählen")
+                .buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 3 * s) {
+                    Text(audio.deviceName).font(.system(size: 11 * s, weight: .medium)).lineLimit(1)
+                    VolumeSlider(value: Binding(get: { Double(audio.volume) }, set: { audio.setVolume(Float($0)) }))
+                        .frame(width: 16 * s, height: 38 * s)
+                }
+                Text("\(Int(audio.volume * 100))%").font(.system(size: 11 * s, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(Theme.secondary)
+                if w.size >= 4 {
+                    CircleButton(symbol: "airpodspro", size: 30) {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!)
+                    }
+                    .help("Ausgabegerät wählen")
+                }
             }
-        }
-        .tilePadding(s)
+            .tilePadding(s)
         }
     }
 }
@@ -191,15 +191,17 @@ struct VolumeSlider: View {
 
     var body: some View {
         GeometryReader { g in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Theme.fg.opacity(0.15)).frame(height: 6)
-                Capsule().fill(Theme.fg).frame(width: max(6, g.size.width * value), height: 6)
-                Circle().fill(Theme.fg).frame(width: 12, height: 12).offset(x: max(0, g.size.width * value - 6))
+            ZStack {
+                Capsule().fill(Theme.fg.opacity(0.15)).frame(width: 6 * min(1, g.size.width / 12))
+                Capsule().fill(Theme.fg)
+                    .frame(width: 6 * min(1, g.size.width / 12), height: g.size.height * value)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                Circle().fill(Theme.fg).frame(width: 12, height: 12)
+                    .position(x: g.size.width / 2, y: g.size.height * (1 - value))
             }
-            .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { v in
-                value = max(0, min(1, v.location.x / g.size.width))
+                value = max(0, min(1, 1 - v.location.y / g.size.height))
             })
         }
     }
@@ -230,7 +232,7 @@ struct ClipboardWidget: View {
         .onTapGesture { open = true }
         .popover(isPresented: $open) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Verlauf – Klick kopiert").font(.headline).padding(10)
+                Text("Copy & Paste – Klick kopiert").font(.headline).padding(10)
                 Divider()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -262,25 +264,89 @@ struct ClipboardWidget: View {
 struct ScreenshotWidget: View {
     let w: WidgetInstance
     @Environment(\.dockScale) private var s
+    @State private var snapshots: [URL] = []
+    @State private var showingHistory = false
 
     var body: some View {
-        HStack(spacing: 8 * s) {
-            CircleButton(symbol: "rectangle.dashed", size: 36, fill: Color.blue.opacity(0.25), tint: .blue) { capture(["-i"]) }
+        HStack(spacing: (w.size == 1 ? 8 : 4) * s) {
+            if w.size > 1 {
+                Button { showingHistory = true } label: {
+                    if let latest = snapshots.first, let image = NSImage(contentsOf: latest) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 28 * s, height: 28 * s)
+                            .clipShape(RoundedRectangle(cornerRadius: 5 * s))
+                    } else {
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: 16 * s))
+                            .foregroundStyle(Theme.secondary)
+                            .frame(width: 28 * s, height: 28 * s)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Letzte Bildschirmfotos anzeigen")
+                .popover(isPresented: $showingHistory) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Letzte Bildschirmfotos").font(.headline).padding(10)
+                        Divider()
+                        if snapshots.isEmpty {
+                            Text("Noch keine Bildschirmfotos auf dem Schreibtisch.")
+                                .font(.callout).foregroundStyle(Theme.secondary)
+                                .padding(12)
+                        } else {
+                            ForEach(snapshots, id: \.self) { url in
+                                Button {
+                                    NSWorkspace.shared.open(url)
+                                    showingHistory = false
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        if let image = NSImage(contentsOf: url) {
+                                            Image(nsImage: image)
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 48, height: 32)
+                                                .clipped()
+                                        }
+                                        Text(url.deletingPathExtension().lastPathComponent)
+                                            .lineLimit(1)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(width: 300)
+                }
+            }
+            CircleButton(symbol: "rectangle.dashed", size: w.size == 1 ? 36 : 24,
+                         fill: Color.blue.opacity(0.25), tint: .blue) { capture(["-i"]) }
                 .help("Bereich (⇧ = in Zwischenablage)")
             if w.size >= 2 {
-                CircleButton(symbol: "macwindow", size: 36, fill: Color.green.opacity(0.22), tint: .green) { capture(["-iW"]) }
+                CircleButton(symbol: "macwindow", size: 24, fill: Color.green.opacity(0.22), tint: .green) { capture(["-iW"]) }
                     .help("Fenster")
-                CircleButton(symbol: "display", size: 36, fill: Color.purple.opacity(0.25), tint: .purple) { capture([]) }
+                CircleButton(symbol: "display", size: 24, fill: Color.purple.opacity(0.25), tint: .purple) { capture([]) }
                     .help("Ganzer Bildschirm")
             }
             if w.size >= 3 {
-                CircleButton(symbol: "record.circle", size: 36, fill: Color.red.opacity(0.22), tint: .red) {
+                CircleButton(symbol: "record.circle", size: 28, fill: Color.red.opacity(0.22), tint: .red) {
                     NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Screenshot.app"))
                 }
                 .help("Bildschirmaufnahme")
             }
         }
         .tilePadding(s)
+        .task {
+            refreshSnapshots()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                refreshSnapshots()
+            }
+        }
     }
 
     private func capture(_ args: [String]) {
@@ -289,8 +355,34 @@ struct ScreenshotWidget: View {
         let path = NSHomeDirectory() + "/Desktop/Bildschirmfoto \(fmt.string(from: Date())).png"
         let clipboard = NSEvent.modifierFlags.contains(.shift)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            Shell.runAsync("/usr/sbin/screencapture", args + (clipboard ? ["-c"] : [path]))
+            Shell.runAsync("/usr/sbin/screencapture", args + (clipboard ? ["-c"] : [path])) { _ in
+                refreshSnapshots()
+            }
         }
+    }
+
+    private func refreshSnapshots() {
+        let desktop = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Desktop")
+        let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff"]
+        snapshots = ((try? FileManager.default.contentsOfDirectory(
+            at: desktop,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? [])
+            .filter { url in
+                let name = url.lastPathComponent
+                return imageExtensions.contains(url.pathExtension.lowercased())
+                    && (name.localizedCaseInsensitiveContains("Bildschirmfoto")
+                        || name.localizedCaseInsensitiveContains("Screenshot")
+                        || name.localizedCaseInsensitiveContains("Screen Shot"))
+            }
+            .sorted {
+                let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhs > rhs
+            }
+            .prefix(8)
+            .map { $0 }
     }
 }
 
@@ -363,70 +455,132 @@ struct EmojiWidget: View {
 
 struct PhotosWidget: View {
     let w: WidgetInstance
+    @ObservedObject private var library = PhotoLibrary.shared
     @Environment(\.dockScale) private var s
-    @State private var current: URL?
-    @State private var image: NSImage?
-    @State private var pool: [URL] = []
+    @State private var offset = 0
+
+    private var visibleAssets: [PHAsset] {
+        let count = min(w.size == 1 ? 1 : w.size * 2, library.assets.count)
+        guard count > 0 else { return [] }
+        return (0..<count).map { library.assets[(offset + $0) % library.assets.count] }
+    }
 
     var body: some View {
-        ZStack {
-            if let image {
-                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+        Group {
+            if library.authorization == .denied || library.authorization == .restricted {
+                Button {
+                    PhotoLibrary.openPrivacySettings()
+                } label: {
+                    VStack(spacing: 4 * s) {
+                        Image(systemName: "lock.photo").font(.system(size: 18 * s))
+                        if w.size > 1 {
+                            Text("Fotos-Zugriff erlauben").font(.system(size: 9 * s))
+                        }
+                    }
+                    .foregroundStyle(Theme.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .buttonStyle(.plain)
+            } else if visibleAssets.isEmpty {
+                Image(systemName: "photo.on.rectangle")
+                    .font(.system(size: 22 * s))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                Image(systemName: "photo.on.rectangle").font(.system(size: 22 * s)).foregroundStyle(Theme.secondary)
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 2 * s), count: min(w.size, visibleAssets.count)),
+                    spacing: 2 * s
+                ) {
+                    ForEach(visibleAssets, id: \.localIdentifier) { asset in
+                        PhotoThumbnail(
+                            asset: asset,
+                            targetSize: CGSize(width: 180 * s, height: 100 * s)
+                        )
+                        .frame(height: 27 * s)
+                        .clipShape(RoundedRectangle(cornerRadius: 4 * s))
+                    }
+                }
+                .padding(4 * s)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
         .contentShape(Rectangle())
-        .onTapGesture { if let current { NSWorkspace.shared.open(current) } }
+        .onTapGesture { openPhotos() }
         .onWidgetAction(w.id) { a in
-            if a == "next" { next() }
-            if a == "reveal", let current { NSWorkspace.shared.activateFileViewerSelecting([current]) }
+            if a == "next", !library.assets.isEmpty { offset = (offset + 1) % library.assets.count }
+            if a == "reveal" { openPhotos() }
         }
-        .task(id: w.cfg("folder")) {
-            await loadPool()
-            while !Task.isCancelled {
-                next()
-                try? await Task.sleep(for: .seconds(max(1, w.cfgInt("interval", 10)) * 60))
-            }
+        .task {
+            guard DockStore.shared.instance(w.id) != nil else { return }
+            library.refresh()
         }
     }
 
-    private func loadPool() async {
-        let folder = URL(fileURLWithPath: (w.cfg("folder") as NSString).expandingTildeInPath)
-        let result: [URL] = await Task.detached(priority: .utility) {
-            let exts: Set<String> = ["jpg", "jpeg", "png", "heic", "webp", "tiff"]
-            var found: [URL] = []
-            let e = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil,
-                                                   options: [.skipsHiddenFiles, .skipsPackageDescendants])
-            while let u = e?.nextObject() as? URL, found.count < 800 {
-                if exts.contains(u.pathExtension.lowercased()) { found.append(u) }
-            }
-            return found
-        }.value
-        pool = result
-    }
-
-    private func next() {
-        guard let u = pool.randomElement() else { return }
-        current = u
-        Task.detached(priority: .utility) {
-            let img = NSImage(contentsOf: u).map { thumbnail($0) }
-            await MainActor.run { image = img }
-        }
+    private func openPhotos() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Photos.app"))
     }
 }
 
-private func thumbnail(_ img: NSImage) -> NSImage {
-    let maxSide: CGFloat = 400
-    let size = img.size
-    guard size.width > maxSide || size.height > maxSide else { return img }
-    let scale = maxSide / max(size.width, size.height)
-    let target = NSSize(width: size.width * scale, height: size.height * scale)
-    let out = NSImage(size: target)
-    out.lockFocus()
-    img.draw(in: NSRect(origin: .zero, size: target))
-    out.unlockFocus()
-    return out
+struct PhotosHoverList: View {
+    @ObservedObject private var library = PhotoLibrary.shared
+
+    private let columns = [GridItem(.adaptive(minimum: 84), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Fotomediathek", systemImage: "photo.on.rectangle")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    library.refresh(force: true)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .help("Fotomediathek aktualisieren")
+            }
+            .padding(.horizontal, 12)
+
+            if library.authorization == .denied || library.authorization == .restricted {
+                Button("Zugriff in den Systemeinstellungen erlauben") {
+                    PhotoLibrary.openPrivacySettings()
+                }
+                .buttonStyle(.link)
+                .padding(.horizontal, 12)
+            } else if library.assets.isEmpty {
+                Text("Keine Fotos gefunden.")
+                    .font(.callout)
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, 12)
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        ForEach(library.assets.prefix(18), id: \.localIdentifier) { asset in
+                            PhotoHoverCell(asset: asset)
+                        }
+                    }
+                    .padding(12)
+                }
+                .frame(maxHeight: 340)
+            }
+        }
+        .task { library.refresh() }
+    }
+}
+
+private struct PhotoHoverCell: View {
+    let asset: PHAsset
+    @State private var hovered = false
+
+    var body: some View {
+        PhotoThumbnail(asset: asset, targetSize: CGSize(width: 240, height: 180))
+            .frame(height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .scaleEffect(hovered ? 1.16 : 1)
+            .zIndex(hovered ? 1 : 0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: hovered)
+            .onHover { hovered = $0 }
+            .onTapGesture { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Photos.app")) }
+        }
 }

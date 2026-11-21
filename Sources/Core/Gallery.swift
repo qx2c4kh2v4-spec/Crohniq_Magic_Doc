@@ -20,7 +20,7 @@ extension WidgetCategory {
         case .productivity:
             "Behalte deinen Tag im Blick – mit Terminen, Erinnerungen, Pomodoro, Trink-Erinnerung, Fortschritt, Uhren und Mail."
         case .system:
-            "Steuere deinen Mac schneller mit Systemwerten, Schnellschaltern, Lautstärke, Zwischenablage, Bildschirmfotos, Sprachmemos, Emoji, Wetter, Fotos und Musik."
+            "Steuere deinen Mac schneller mit Systemwerten, Finder, Lautstärke, Copy & Paste, Bildschirmfotos samt Verlauf, Sprachmemos, Emoji, Wetter, Fotos und Musik."
         case .utility:
             "Farben aufnehmen, Währungen umrechnen, Ideen notieren – Alltagswerkzeuge, ohne extra Apps zu öffnen."
         case .business:

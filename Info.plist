@@ -36,6 +36,8 @@
 	<string>Das Wetter-Widget zeigt das Wetter an deinem aktuellen Standort.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Das Sprachmemo-Widget nimmt Audio auf.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Das Fotos-Widget zeigt Bilder aus deiner Apple-Fotomediathek an.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Das Erinnerungen-Widget zeigt und erledigt deine Erinnerungen.</string>
 </dict>
