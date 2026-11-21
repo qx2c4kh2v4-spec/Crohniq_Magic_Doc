@@ -425,6 +425,7 @@ struct TileContainer: View {
         case .weather: return AnyView(WeatherHoverList(city: instance.cfg("city", "auto")))
         case .nowPlaying: return AnyView(MusicHoverList())
         case .photos: return AnyView(PhotosHoverList(count: min(max(Int(instance.cfg("count", "5")) ?? 5, 1), 12)))
+        case .panoramas: return AnyView(PanoramasHoverList(count: min(max(Int(instance.cfg("count", "10")) ?? 10, 1), 50)))
         case .shortcuts: return AnyView(ShortcutsHoverList(w: instance))
         case .dropbox: return AnyView(DropboxHoverList(w: instance))
         case .finder: return AnyView(FinderHoverList(w: instance))

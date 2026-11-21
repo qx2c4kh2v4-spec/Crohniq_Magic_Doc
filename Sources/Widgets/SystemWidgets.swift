@@ -740,6 +740,139 @@ private enum PanoramaSlide: Identifiable {
     }
 }
 
+struct PanoramasHoverList: View {
+    let count: Int
+    @ObservedObject private var library = PhotoLibrary.shared
+    @State private var status: String?
+
+    private var slides: [PanoramaSlide] {
+        let limit = min(max(count, 1), 50)
+        let photos = library.panoramas
+        let wallpapers = library.appleWallpapers
+        var result: [PanoramaSlide] = []
+        var photoIndex = 0
+        var wallpaperIndex = 0
+
+        while result.count < limit && (photoIndex < photos.count || wallpaperIndex < wallpapers.count) {
+            if photoIndex < photos.count {
+                result.append(.photo(photos[photoIndex]))
+                photoIndex += 1
+            }
+            if result.count < limit, wallpaperIndex < wallpapers.count {
+                result.append(.wallpaper(wallpapers[wallpaperIndex]))
+                wallpaperIndex += 1
+            }
+        }
+        return result
+    }
+
+    private let columns = [GridItem(.adaptive(minimum: 84), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Hintergrundbilder", systemImage: "pano.fill")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    library.refresh(force: true)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .help("Bilder aktualisieren")
+            }
+            .padding(.horizontal, 12)
+
+            if library.authorization == .denied || library.authorization == .restricted {
+                Button("Fotos-Zugriff erlauben") {
+                    PhotoLibrary.openPrivacySettings()
+                }
+                .padding(.horizontal, 12)
+            } else if slides.isEmpty {
+                Text("Keine Panorama-Fotos oder Apple-Hintergrundbilder gefunden.")
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, 12)
+            } else {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(slides) { slide in
+                        Button {
+                            setWallpaper(slide)
+                        } label: {
+                            ZStack(alignment: .bottomLeading) {
+                                slideThumbnail(slide)
+                                    .frame(height: 70)
+                                Image(systemName: slide.symbol)
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(6)
+                                    .background(Capsule().fill(.black.opacity(0.55)))
+                                    .padding(5)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Als Hintergrund für alle Monitore verwenden")
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+
+            if let status {
+                Text(status).font(.caption).foregroundStyle(Theme.secondary).padding(.horizontal, 12)
+            }
+        }
+        .onAppear { library.refresh() }
+    }
+
+    @ViewBuilder
+    private func slideThumbnail(_ slide: PanoramaSlide) -> some View {
+        switch slide {
+        case .photo(let asset):
+            PhotoThumbnail(asset: asset, targetSize: CGSize(width: 168, height: 140))
+        case .wallpaper(let url):
+            AppleWallpaperThumbnail(url: url)
+        }
+    }
+
+    private func setWallpaper(_ slide: PanoramaSlide) {
+        switch slide {
+        case .wallpaper(let url):
+            apply(url)
+        case .photo(let asset):
+            PhotoLibrary.shared.requestImage(for: asset, size: CGSize(width: 3840, height: 2160)) { image in
+                guard let image,
+                      let tiff = image.tiffRepresentation,
+                      let bitmap = NSBitmapImageRep(data: tiff),
+                      let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]) else {
+                    status = "Das Foto konnte nicht vorbereitet werden."
+                    return
+                }
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("crohniq-wallpaper-\(UUID().uuidString).jpg")
+                do {
+                    try jpeg.write(to: url)
+                    apply(url)
+                } catch {
+                    status = "Das Foto konnte nicht gespeichert werden."
+                }
+            }
+        }
+    }
+
+    private func apply(_ url: URL) {
+        var failed = false
+        for screen in NSScreen.screens {
+            do {
+                try NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [:])
+            } catch {
+                failed = true
+            }
+        }
+        status = failed ? "Einige Monitore konnten nicht aktualisiert werden." : "Hintergrundbild wurde gesetzt."
+    }
+}
+
 struct PanoramasWidget: View {
     let w: WidgetInstance
     @ObservedObject private var library = PhotoLibrary.shared
