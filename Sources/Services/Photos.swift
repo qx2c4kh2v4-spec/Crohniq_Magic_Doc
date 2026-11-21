@@ -115,6 +115,8 @@ final class PhotoLibrary: ObservableObject {
 
             for case let url as URL in enumerator
             where imageExtensions.contains(url.pathExtension.lowercased()) {
+                guard !url.pathComponents.contains(".thumbnails"),
+                      !url.path.localizedCaseInsensitiveContains("/.thumbnails/") else { continue }
                 wallpapers.insert(url)
             }
         }

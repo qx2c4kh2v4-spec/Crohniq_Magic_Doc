@@ -860,19 +860,36 @@ struct PanoramasHoverList: View {
     private func apply(_ source: NSImage) {
         var failed = false
         for screen in NSScreen.screens {
-            let width = max(1, Int(screen.frame.width * screen.backingScaleFactor))
-            let height = max(1, Int(screen.frame.height * screen.backingScaleFactor))
+            let size = nativePixelSize(for: screen)
+            let width = size.width
+            let height = size.height
             guard let url = export(source, width: width, height: height, for: screen) else {
                 failed = true
                 continue
             }
             do {
-                try NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [:])
+                try NSWorkspace.shared.setDesktopImageURL(
+                    url,
+                    for: screen,
+                    options: [.allowClipping: true]
+                )
             } catch {
                 failed = true
             }
         }
         status = failed ? "Einige Monitore konnten nicht aktualisiert werden." : "Hintergrundbild wurde auf die Monitorauflösung gesetzt."
+    }
+
+    private func nativePixelSize(for screen: NSScreen) -> (width: Int, height: Int) {
+        if let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            let displayID = CGDirectDisplayID(number.uint32Value)
+            let width = CGDisplayPixelsWide(displayID)
+            let height = CGDisplayPixelsHigh(displayID)
+            if width > 0, height > 0 { return (width, height) }
+        }
+        let width = Int(screen.frame.width * screen.backingScaleFactor)
+        let height = Int(screen.frame.height * screen.backingScaleFactor)
+        return (max(1, width), max(1, height))
     }
 
     private func export(_ source: NSImage, width: Int, height: Int, for screen: NSScreen) -> URL? {
