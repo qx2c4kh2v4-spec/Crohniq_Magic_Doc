@@ -975,12 +975,12 @@ struct PanoramasHoverList: View {
         source.draw(in: drawnRect, from: .zero, operation: .copy, fraction: 1)
         NSGraphicsContext.restoreGraphicsState()
 
-        guard let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]) else { return nil }
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
         let displayIndex = NSScreen.screens.firstIndex(of: screen) ?? 0
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("crohniq-wallpaper-\(displayIndex)-\(width)x\(height).jpg")
+            .appendingPathComponent("crohniq-wallpaper-\(displayIndex)-\(width)x\(height)-\(UUID().uuidString).png")
         do {
-            try jpeg.write(to: url)
+            try png.write(to: url)
             return url
         } catch {
             return nil
@@ -1015,7 +1015,7 @@ struct PanoramasWidget: View {
     }
 
     private var timer: Publishers.Autoconnect<Timer.TimerPublisher> {
-        let interval = min(max(w.cfgInt("interval", 30), 5), 3600)
+        let interval = min(max(w.cfgInt("interval", 300), 30), 3600)
         return Timer.publish(every: TimeInterval(interval), on: .main, in: .common).autoconnect()
     }
 
@@ -1130,7 +1130,13 @@ struct PanoramasWidget: View {
         for screen in NSScreen.screens {
             let size = nativePixelSize(for: screen)
             guard let url = exportWallpaper(source, width: size.width, height: size.height, for: screen) else { continue }
-            try? NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [.allowClipping: true])
+            try? NSWorkspace.shared.setDesktopImageURL(
+                url,
+                for: screen,
+                options: [
+                    .allowClipping: false
+                ]
+            )
         }
     }
 
@@ -1146,6 +1152,16 @@ struct PanoramasWidget: View {
     }
 
     private func exportWallpaper(_ source: NSImage, width: Int, height: Int, for screen: NSScreen) -> URL? {
+        let sourcePixelSize = source.representations
+            .compactMap { $0 as? NSBitmapImageRep }
+            .map { (width: $0.pixelsWide, height: $0.pixelsHigh) }
+            .max { $0.width * $0.height < $1.width * $1.height }
+        let sourceSize: NSSize
+        if let sourcePixelSize {
+            sourceSize = NSSize(width: sourcePixelSize.width, height: sourcePixelSize.height)
+        } else {
+            sourceSize = source.size
+        }
         guard let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: width,
@@ -1161,7 +1177,6 @@ struct PanoramasWidget: View {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
         NSGraphicsContext.current?.imageInterpolation = .high
-        let sourceSize = source.size
         let scale = max(CGFloat(width) / max(sourceSize.width, 1),
                         CGFloat(height) / max(sourceSize.height, 1))
         let drawnSize = NSSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
@@ -1173,11 +1188,11 @@ struct PanoramasWidget: View {
         )
         source.draw(in: drawnRect, from: .zero, operation: .copy, fraction: 1)
         NSGraphicsContext.restoreGraphicsState()
-        guard let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]) else { return nil }
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
         let displayIndex = NSScreen.screens.firstIndex(of: screen) ?? 0
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("crohniq-panorama-\(displayIndex)-\(width)x\(height)-\(UUID().uuidString).jpg")
-        try? jpeg.write(to: url)
+            .appendingPathComponent("crohniq-panorama-\(displayIndex)-\(width)x\(height)-\(UUID().uuidString).png")
+        try? png.write(to: url)
         return url
     }
 }

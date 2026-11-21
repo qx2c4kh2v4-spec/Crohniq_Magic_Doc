@@ -17,16 +17,8 @@ struct DockView: View {
             ? AnyLayout(VStackLayout(alignment: store.settings.position == .right ? .trailing : .leading, spacing: store.gap))
             : AnyLayout(HStackLayout(spacing: store.gap))
         VStack(spacing: store.profiles.isEmpty ? 0 : store.gap) {
-            if !store.profiles.isEmpty {
-                ZStack {
-                    ProfileSwitcher()
-                        .frame(width: store.profileStripWidth,
-                               height: store.profileStripHeight)
-                    AppIdentityBadge(scale: s)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .frame(width: store.contentSize.width - store.barPadding * 2,
-                       height: store.profileStripHeight)
+            if !store.profiles.isEmpty, store.settings.position == .bottom {
+                profileHeader(s: s)
             }
             layout {
                 DockGrip(vertical: store.vertical)
@@ -49,6 +41,9 @@ struct DockView: View {
                         .onDrop(of: [.text], delegate: ReorderDrop(target: w.id, dragging: $dragging))
                 }
             }
+            if !store.profiles.isEmpty, store.settings.position != .bottom {
+                profileHeader(s: s)
+            }
         }
         .onDrop(of: [.text], isTargeted: nil) { addCatalogWidget(from: $0) }
         .padding(store.barPadding)
@@ -62,6 +57,19 @@ struct DockView: View {
         .environment(\.dockScale, s)
         .fontDesign(store.settings.fontDesign)
         .foregroundStyle(palette.fg)
+    }
+
+    @ViewBuilder
+    private func profileHeader(s: CGFloat) -> some View {
+        ZStack {
+            ProfileSwitcher()
+                .frame(width: store.profileStripWidth,
+                       height: store.profileStripHeight)
+            AppIdentityBadge(scale: s)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .frame(width: store.contentSize.width - store.barPadding * 2,
+               height: store.profileStripHeight)
     }
 }
 

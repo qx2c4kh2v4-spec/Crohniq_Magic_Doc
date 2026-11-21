@@ -241,7 +241,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
              "count": "5"]
         case .shortcuts: ["count": "5", "favorites": ""]
         case .photos: ["count": "5"]
-        case .panoramas: ["count": "10", "interval": "30"]
+        case .panoramas: ["count": "10", "interval": "300"]
         case .bookmarks: ["source": "safari", "folder": "", "items": "Google|https://www.google.com\nGitHub|https://github.com"]
         case .search: ["mode": "files", "engine": "google"]
         case .mail: ["count": "10", "mailFilter": "all"]
@@ -300,7 +300,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
             [ConfigField(key: "count", label: "Bilder im Wechsel", kind: .number,
                          help: "Anzahl der Panorama-Fotos und Apple-Hintergrundbilder (1–50)."),
              ConfigField(key: "interval", label: "Hintergrund wechseln alle … Sekunden", kind: .number,
-                         help: "Mindestens 5 Sekunden.")]
+                         help: "Empfohlen: 300 Sekunden (5 Minuten). Minimum: 30 Sekunden.")]
         case .bookmarks:
             [ConfigField(key: "source", label: "Quelle", kind: .choice([("safari", "Safari-Lesezeichen"), ("custom", "Eigene Liste")])),
              ConfigField(key: "folder", label: "Safari-Ordner auf der Kachel", placeholder: "leer = Favoritenleiste",
