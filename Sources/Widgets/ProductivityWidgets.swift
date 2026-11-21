@@ -366,13 +366,49 @@ struct FocusWidget: View {
 
 // MARK: - Drink water
 
+final class SharedWaterStatus: ObservableObject {
+    static let shared = SharedWaterStatus()
+
+    @Published private(set) var day: String
+    @Published private(set) var count: Int
+    @Published private(set) var last: Double
+    @Published private(set) var lastReminder: Double
+
+    private let defaults = UserDefaults.standard
+
+    private init() {
+        day = defaults.string(forKey: "water.status.day") ?? ""
+        count = defaults.integer(forKey: "water.status.count")
+        last = defaults.double(forKey: "water.status.last")
+        lastReminder = defaults.double(forKey: "water.status.lastReminder")
+    }
+
+    func setCount(_ count: Int, day: String) {
+        self.day = day
+        self.count = max(0, count)
+        defaults.set(day, forKey: "water.status.day")
+        defaults.set(self.count, forKey: "water.status.count")
+    }
+
+    func setLast(_ value: Double) {
+        last = value
+        defaults.set(value, forKey: "water.status.last")
+    }
+
+    func setLastReminder(_ value: Double) {
+        lastReminder = value
+        defaults.set(value, forKey: "water.status.lastReminder")
+    }
+}
+
 struct WaterWidget: View {
     let w: WidgetInstance
     @ObservedObject private var ticker = Ticker.shared
+    @ObservedObject private var waterStatus = SharedWaterStatus.shared
     @Environment(\.dockScale) private var s
 
     private var today: String { Date().formatted(.iso8601.year().month().day()) }
-    private var count: Int { w.cfg("day") == today ? w.cfgInt("count", 0) : 0 }
+    private var count: Int { waterStatus.day == today ? waterStatus.count : 0 }
 
     @State private var hop = false
     @State private var bursts: [UUID] = []
@@ -475,14 +511,11 @@ struct WaterWidget: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { bursts.removeAll { $0 == id } }
         }
         set(max(0, count + d))
-        DockStore.shared.setConfig(w.id, "last", String(Date().timeIntervalSince1970))
+        waterStatus.setLast(Date().timeIntervalSince1970)
     }
 
     private func set(_ n: Int) {
-        DockStore.shared.update(w.id) {
-            $0.config["day"] = today
-            $0.config["count"] = String(n)
-        }
+        waterStatus.setCount(n, day: today)
     }
 
     private func remind(_ now: Date) {
@@ -490,9 +523,9 @@ struct WaterWidget: View {
         guard interval > 0, Int(now.timeIntervalSince1970) % 30 == 0 else { return }
         let hour = Calendar.current.component(.hour, from: now)
         guard (8...21).contains(hour), count < w.cfgInt("goal", 8) else { return }
-        let last = max(Double(w.cfg("last")) ?? 0, Double(w.cfg("lastReminder")) ?? 0)
+        let last = max(waterStatus.last, waterStatus.lastReminder)
         if now.timeIntervalSince1970 - last > interval {
-            DockStore.shared.setConfig(w.id, "lastReminder", String(now.timeIntervalSince1970))
+            waterStatus.setLastReminder(now.timeIntervalSince1970)
             Notifier.notify("Zeit für ein Glas Wasser 💧", "Heute: \(count) von \(w.cfgInt("goal", 8)) Gläsern.")
         }
     }

@@ -18,12 +18,12 @@ struct DockView: View {
             : AnyLayout(HStackLayout(spacing: store.gap))
         VStack(spacing: store.profiles.isEmpty ? 0 : store.gap) {
             if !store.profiles.isEmpty {
-                HStack(spacing: store.gap) {
+                ZStack {
                     ProfileSwitcher()
                         .frame(width: store.profileStripWidth,
                                height: store.profileStripHeight)
-                    Spacer(minLength: 0)
                     AppIdentityBadge(scale: s)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .frame(width: store.contentSize.width - store.barPadding * 2,
                        height: store.profileStripHeight)
