@@ -8,9 +8,10 @@ struct BrowserVisit: Identifiable {
 }
 
 enum BrowserHistory {
-    static func load(bundleID: String) -> (visits: [BrowserVisit], error: String?) {
+    static func load(bundleID: String, limit: Int = 10) -> (visits: [BrowserVisit], error: String?) {
         let database: URL
         let query: String
+        let rowLimit = min(max(limit, 1), 50)
 
         switch bundleID {
         case "com.apple.Safari":
@@ -23,7 +24,7 @@ enum BrowserHistory {
             LEFT JOIN history_visits hv ON hv.history_item = hi.id
             GROUP BY hi.id
             ORDER BY MAX(hv.visit_time) DESC
-            LIMIT 10;
+            LIMIT \(rowLimit);
             """
         case "org.mozilla.firefox":
             guard let profile = firefoxProfile() else {
@@ -36,7 +37,7 @@ enum BrowserHistory {
             FROM moz_places
             WHERE last_visit_date > 0
             ORDER BY last_visit_date DESC
-            LIMIT 10;
+            LIMIT \(rowLimit);
             """
         default:
             return ([], nil)

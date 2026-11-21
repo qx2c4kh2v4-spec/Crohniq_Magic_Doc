@@ -1,10 +1,105 @@
+import Contacts
 import EventKit
 import SwiftUI
 
+struct FolderHoverList: View {
+    let folder: String
+    let count: Int
+    @State private var entries: [URL] = []
+    @State private var loading = true
+    @State private var error: String?
+
+    private var folderURL: URL { URL(fileURLWithPath: folder, isDirectory: true) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "folder.fill").foregroundStyle(Color.accentColor)
+                Text(folderURL.lastPathComponent).font(.headline).lineLimit(1)
+                Spacer(minLength: 0)
+                Text("\(entries.count)/\(count)").font(.caption).foregroundStyle(Theme.secondary)
+                Button {
+                    NSWorkspace.shared.open(folderURL)
+                } label: {
+                    Image(systemName: "arrow.up.forward")
+                }
+                .buttonStyle(.plain)
+                .help("Ordner im Finder öffnen")
+            }
+            .padding(.horizontal, 12)
+
+            if loading {
+                ProgressView().controlSize(.small).frame(maxWidth: .infinity)
+            } else if let error {
+                Text(error).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                    .padding(.horizontal, 12)
+            } else if entries.isEmpty {
+                Text("Der Ordner ist leer.").font(.caption).foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, 12)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(entries, id: \.path) { url in
+                            Button {
+                                NSWorkspace.shared.open(url)
+                                HoverPanel.shared.close()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(nsImage: fileIcon(url.path)).resizable().frame(width: 20, height: 20)
+                                    Text(url.lastPathComponent).lineLimit(1)
+                                    Spacer(minLength: 0)
+                                    Image(systemName: url.hasDirectoryPath ? "folder" : "arrow.up.forward")
+                                        .font(.caption2).foregroundStyle(Theme.secondary)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .frame(maxHeight: 280)
+            }
+        }
+        .padding(.vertical, 8)
+        .onAppear(perform: load)
+    }
+
+    private func load() {
+        let limit = min(max(count, 1), 50)
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let urls = try FileManager.default.contentsOfDirectory(
+                    at: folderURL,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                )
+                let sorted = urls.sorted {
+                    $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+                }
+                DispatchQueue.main.async {
+                    entries = Array(sorted.prefix(limit))
+                    error = nil
+                    loading = false
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.error = error.localizedDescription
+                    entries = []
+                    loading = false
+                }
+            }
+        }
+    }
+}
+
 struct FinderHoverList: View {
+    let w: WidgetInstance
     @State private var recent: [URL] = []
 
-    private var folders: [(String, String, String)] {
+    private var recentLimit: Int { min(max(Int(w.cfg("fileCount", "10")) ?? 10, 1), 50) }
+
+    private var defaultFolders: [(String, String, String)] {
         [
             ("Benutzerordner", NSHomeDirectory(), "house"),
             ("Schreibtisch", NSHomeDirectory() + "/Desktop", "menubar.dock.rectangle"),
@@ -12,6 +107,14 @@ struct FinderHoverList: View {
             ("Downloads", NSHomeDirectory() + "/Downloads", "arrow.down.circle"),
             ("Programme", "/Applications", "square.grid.2x2"),
         ]
+    }
+
+    private var favoriteFolders: [String] {
+        w.cfg("favorites").split(separator: "\n").map { ($0 as NSString).expandingTildeInPath }
+            .filter { path in
+                var isDirectory = ObjCBool(false)
+                return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+            }
     }
 
     var body: some View {
@@ -22,12 +125,19 @@ struct FinderHoverList: View {
                 Text("Finder").font(.headline)
                 Spacer()
                 Button("Öffnen") { open(NSHomeDirectory()) }.controlSize(.small)
+                Button {
+                    addFavoriteFolder()
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                }
+                .buttonStyle(.plain)
+                .help("Favoriten-Verzeichnis hinzufügen")
             }
             .padding(.horizontal, 12)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("ORDNER").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
-                ForEach(folders, id: \.1) { name, path, symbol in
+                ForEach(defaultFolders, id: \.1) { name, path, symbol in
                     Button { open(path) } label: {
                         Label(name, systemImage: symbol).frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -36,11 +146,34 @@ struct FinderHoverList: View {
             }
             .padding(.horizontal, 12)
 
+            if !favoriteFolders.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("FAVORITEN").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                    ForEach(favoriteFolders, id: \.self) { path in
+                        HStack {
+                            Button { open(path) } label: {
+                                Label(URL(fileURLWithPath: path).lastPathComponent, systemImage: "star")
+                                    .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                removeFavoriteFolder(path)
+                            } label: {
+                                Image(systemName: "xmark")
+                            }
+                            .buttonStyle(.plain)
+                            .help("Aus Favoriten entfernen")
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+
             if !recent.isEmpty {
                 Divider()
                 VStack(alignment: .leading, spacing: 4) {
                     Text("ZULETZT GEÖFFNET").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
-                    ForEach(recent.prefix(10), id: \.self) { url in
+                    ForEach(recent.prefix(recentLimit), id: \.self) { url in
                         Button { NSWorkspace.shared.open(url); HoverPanel.shared.close() } label: {
                             Label(url.lastPathComponent, systemImage: "doc")
                                 .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
@@ -53,7 +186,7 @@ struct FinderHoverList: View {
         }
         .onAppear {
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = AppLauncher.recentDocuments(bundleID: "com.apple.finder", limit: 10)
+                let result = AppLauncher.recentDocuments(bundleID: "com.apple.finder", limit: recentLimit)
                 DispatchQueue.main.async { recent = result }
             }
         }
@@ -62,6 +195,21 @@ struct FinderHoverList: View {
     private func open(_ path: String) {
         NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
         HoverPanel.shared.close()
+    }
+
+    private func addFavoriteFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let paths = favoriteFolders + (favoriteFolders.contains(url.path) ? [] : [url.path])
+        DockStore.shared.setConfig(w.id, "favorites", paths.joined(separator: "\n"))
+    }
+
+    private func removeFavoriteFolder(_ path: String) {
+        DockStore.shared.setConfig(w.id, "favorites", favoriteFolders.filter { $0 != path }.joined(separator: "\n"))
     }
 }
 
@@ -73,14 +221,18 @@ private struct MailPreview: Identifiable {
 }
 
 struct MailHoverList: View {
+    let count: Int
+    let filter: String
     @State private var messages: [MailPreview] = []
     @State private var loading = true
     @State private var error: String?
 
+    private var limit: Int { min(max(count, 1), 50) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Letzte 10 Mails", systemImage: "envelope")
+                Label("Letzte \(limit) Mails", systemImage: "envelope")
                     .font(.headline)
                 Spacer()
                 Button("Mail öffnen") {
@@ -128,16 +280,37 @@ struct MailHoverList: View {
     }
 
     private func load() {
+        loading = true
+        error = nil
+        if filter == "known" {
+            loadKnownContactEmails { emails, failure in
+                guard let emails else {
+                    error = failure ?? "Kontakte konnten nicht geladen werden."
+                    loading = false
+                    return
+                }
+                fetchMessages(knownEmails: emails)
+            }
+        } else {
+            fetchMessages(knownEmails: nil)
+        }
+    }
+
+    private func fetchMessages(knownEmails: Set<String>?) {
+        let scanLimit = filter == "known" ? min(max(limit * 10, 100), 500) : limit
         let source = """
         tell application "Mail"
-            set total to count of messages of inbox
-            set amount to total
-            if amount > 10 then set amount to 10
+            set sourceMessages to messages of inbox
+            if "\(filter)" is "unread" then
+                set sourceMessages to (messages of inbox whose read status is false)
+            end if
+            set amount to count of sourceMessages
+            if amount > \(scanLimit) then set amount to \(scanLimit)
             set separator to character id 31
             set rowSeparator to character id 30
             set output to ""
             repeat with i from 1 to amount
-                set m to message i of inbox
+                set m to item i of sourceMessages
                 set output to output & (subject of m as text) & separator & (sender of m as text) & separator & ((date received of m) as text) & rowSeparator
             end repeat
             return output
@@ -154,8 +327,66 @@ struct MailHoverList: View {
                 guard fields.count == 3 else { return nil }
                 return MailPreview(subject: String(fields[0]), sender: String(fields[1]), received: String(fields[2]))
             }
-            error = messages.isEmpty ? "Im Posteingang sind keine Mails." : nil
+            if let knownEmails {
+                messages = messages.filter { message in
+                    Self.emailAddresses(in: message.sender).contains { knownEmails.contains($0) }
+                }
+            }
+            messages = Array(messages.prefix(limit))
+            error = messages.isEmpty ? emptyMessage : nil
             loading = false
+        }
+    }
+
+    private var emptyMessage: String {
+        switch filter {
+        case "unread": "Keine ungelesenen Mails."
+        case "known": "Keine Mails von bekannten Kontakten."
+        default: "Im Posteingang sind keine Mails."
+        }
+    }
+
+    private static func emailAddresses(in sender: String) -> [String] {
+        let pattern = #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+        let range = NSRange(sender.startIndex..<sender.endIndex, in: sender)
+        return regex.matches(in: sender, range: range).compactMap {
+            guard let match = Range($0.range, in: sender) else { return nil }
+            return String(sender[match]).lowercased()
+        }
+    }
+
+    private func loadKnownContactEmails(completion: @escaping (Set<String>?, String?) -> Void) {
+        let store = CNContactStore()
+        let fetch: () -> Void = {
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let request = CNContactFetchRequest(keysToFetch: [CNContactEmailAddressesKey as CNKeyDescriptor])
+                    var emails = Set<String>()
+                    try store.enumerateContacts(with: request) { contact, _ in
+                        emails.formUnion(contact.emailAddresses.map { String($0.value).lowercased() })
+                    }
+                    DispatchQueue.main.async { completion(emails, nil) }
+                } catch {
+                    DispatchQueue.main.async { completion(nil, error.localizedDescription) }
+                }
+            }
+        }
+        let status = CNContactStore.authorizationStatus(for: .contacts)
+        if status == .authorized {
+            fetch()
+        } else if status == .notDetermined {
+            store.requestAccess(for: .contacts) { granted, error in
+                if granted {
+                    fetch()
+                } else {
+                    DispatchQueue.main.async {
+                        completion(nil, error?.localizedDescription ?? "Zugriff auf Kontakte wurde verweigert.")
+                    }
+                }
+            }
+        } else {
+            completion(nil, "Kontakte-Zugriff in den Systemeinstellungen erlauben.")
         }
     }
 }
@@ -201,11 +432,11 @@ struct CalendarHoverList: View {
         let cal = Calendar.current
         if cal.isDateInToday(d) { return "HEUTE" }
         if cal.isDateInTomorrow(d) { return "MORGEN" }
-        return d.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "de_CH"))).uppercased()
+        return d.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(AppLanguageSettings.shared.locale)).uppercased()
     }
 
     private func row(_ e: EKEvent) -> some View {
-        let f = Date.FormatStyle(date: .omitted, time: .shortened).locale(Locale(identifier: "de_CH"))
+        let f = Date.FormatStyle(date: .omitted, time: .shortened).locale(AppLanguageSettings.shared.locale)
         return Button {
             open(e)
         } label: {
@@ -311,7 +542,7 @@ struct RemindersHoverList: View {
         if d < Date() && !cal.isDateInToday(d) { return "Überfällig" }
         if cal.isDateInToday(d) { return "Heute \(d.formatted(date: .omitted, time: .shortened))" }
         if cal.isDateInTomorrow(d) { return "Morgen" }
-        return d.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "de_CH")))
+        return d.formatted(.dateTime.day().month(.abbreviated).locale(AppLanguageSettings.shared.locale))
     }
 }
 
@@ -469,7 +700,7 @@ struct NotesHoverList: View {
                                 .frame(width: 16)
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(n.title).font(.callout.weight(.medium)).lineLimit(1)
-                                Text(n.modified.formatted(.relative(presentation: .named).locale(Locale(identifier: "de_CH"))))
+                                Text(n.modified.formatted(.relative(presentation: .named).locale(AppLanguageSettings.shared.locale)))
                                     .font(.caption).foregroundStyle(Theme.secondary)
                             }
                             Spacer(minLength: 0)
@@ -530,17 +761,27 @@ struct NewNoteEditor: View {
 struct LauncherHoverList: View {
     let w: WidgetInstance
     let app: String
+    @ObservedObject private var safari = SafariBookmarks.shared
     @State private var recent: [URL] = []
     @State private var browserHistory: [BrowserVisit] = []
     @State private var browserHistoryError: String?
     @State private var loaded = false
+    @State private var question = ""
 
     private var appPath: String { app }
+    private var itemCount: Int { w.fileCount(for: app) }
     private var pinned: [String] { DockStore.shared.instance(w.id)?.pinnedFiles(for: app) ?? w.pinnedFiles(for: app) }
     private var appName: String { FileManager.default.displayName(atPath: appPath).replacingOccurrences(of: ".app", with: "") }
     private var browserBundleID: String? {
         let bundleID = Bundle(path: appPath)?.bundleIdentifier
         return ["com.apple.Safari", "org.mozilla.firefox"].contains(bundleID ?? "") ? bundleID : nil
+    }
+    private var aiEngine: SearchEngine? {
+        switch Bundle(path: appPath)?.bundleIdentifier {
+        case SearchEngine.chatGPTID: .chatgpt
+        case SearchEngine.claudeID: .claude
+        default: nil
+        }
     }
 
     var body: some View {
@@ -553,6 +794,19 @@ struct LauncherHoverList: View {
                     .controlSize(.small)
             }
             .padding(.horizontal, 12)
+            if let aiEngine {
+                HStack(spacing: 8) {
+                    TextField("\(aiEngine.label) fragen …", text: $question)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(ask)
+                    Button(action: ask) {
+                        Image(systemName: "arrow.up.circle.fill").font(.title3)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .padding(.horizontal, 12)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     if !pinned.isEmpty {
@@ -561,16 +815,29 @@ struct LauncherHoverList: View {
                         Divider()
                     }
                     if let browserBundleID {
-                        Text(browserBundleID == "com.apple.Safari" ? "SAFARI-VERLAUF" : "FIREFOX-VERLAUF")
-                            .font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
-                        if !loaded {
-                            ProgressView().controlSize(.small)
-                        } else if browserHistory.isEmpty {
-                            Text(browserHistoryError ?? "Kein Browserverlauf gefunden.")
-                                .font(.callout).foregroundStyle(Theme.secondary)
-                        }
-                        ForEach(browserHistory.prefix(10)) { visit in
-                            browserRow(visit)
+                        if browserBundleID == "com.apple.Safari", w.cfg("safariView", "history") == "favorites" {
+                            Text("SAFARI-FAVORITEN").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                            if safari.accessDenied {
+                                Text("Safari-Lesezeichen brauchen Festplattenvollzugriff.")
+                                    .font(.callout).foregroundStyle(Theme.secondary)
+                            } else if safari.bar.filter({ !$0.isFolder }).isEmpty {
+                                Text("Keine Safari-Favoriten gefunden.").font(.callout).foregroundStyle(Theme.secondary)
+                            }
+                            ForEach(safari.bar.filter { !$0.isFolder }.prefix(itemCount)) { node in
+                                BookmarkMenuItem(node: node)
+                            }
+                        } else if browserBundleID != "com.apple.Safari" || w.cfg("safariView", "history") != "favorites" {
+                            Text(browserBundleID == "com.apple.Safari" ? "SAFARI-VERLAUF" : "FIREFOX-VERLAUF")
+                                .font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                            if !loaded {
+                                ProgressView().controlSize(.small)
+                            } else if browserHistory.isEmpty {
+                                Text(browserHistoryError ?? "Kein Browserverlauf gefunden.")
+                                    .font(.callout).foregroundStyle(Theme.secondary)
+                            }
+                            ForEach(browserHistory.prefix(itemCount)) { visit in
+                                browserRow(visit)
+                            }
                         }
                         Divider()
                     }
@@ -580,7 +847,10 @@ struct LauncherHoverList: View {
                     } else if recent.isEmpty {
                         Text("Keine zuletzt verwendeten Dokumente").font(.callout).foregroundStyle(Theme.secondary)
                     }
-                    ForEach(recent.map(\.path).filter { !pinned.contains($0) }.prefix(15), id: \.self) { row($0, pinnedRow: false) }
+                    let pinnedCount = min(pinned.count, itemCount)
+                    ForEach(recent.map(\.path).filter { !pinned.contains($0) }.prefix(max(0, itemCount - pinnedCount)), id: \.self) {
+                        row($0, pinnedRow: false)
+                    }
                 }
                 .padding(.horizontal, 12)
             }
@@ -593,8 +863,13 @@ struct LauncherHoverList: View {
     private func load() {
         guard let bid = Bundle(path: appPath)?.bundleIdentifier else { loaded = true; return }
         DispatchQueue.global(qos: .userInitiated).async {
-            let r = AppLauncher.recentDocuments(bundleID: bid, limit: 20)
-            let history = browserBundleID.map { BrowserHistory.load(bundleID: $0) }
+            let r = AppLauncher.recentDocuments(bundleID: bid, limit: itemCount)
+            let history: (visits: [BrowserVisit], error: String?)?
+            if let browserBundleID, browserBundleID != "com.apple.Safari" || w.cfg("safariView", "history") != "favorites" {
+                history = BrowserHistory.load(bundleID: browserBundleID, limit: itemCount)
+            } else {
+                history = nil
+            }
             DispatchQueue.main.async {
                 recent = r
                 browserHistory = history?.visits ?? []
@@ -602,6 +877,14 @@ struct LauncherHoverList: View {
                 loaded = true
             }
         }
+    }
+
+    private func ask() {
+        let value = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, let aiEngine else { return }
+        if aiEngine == .chatgpt { SearchEngine.askChatGPT(value) }
+        else { SearchEngine.askClaude(value) }
+        question = ""
     }
 
     private func browserRow(_ visit: BrowserVisit) -> some View {
@@ -1007,7 +1290,7 @@ struct ClockHoverList: View {
         let diff = (tz.secondsFromGMT(for: now) - TimeZone.current.secondsFromGMT(for: now)) / 3600
         let dayShift = cal.startOfDay(for: now) != Calendar.current.startOfDay(for: now)
             ? (cal.component(.day, from: now) > Calendar.current.component(.day, from: now) ? "Morgen" : "Gestern") : "Heute"
-        let time = now.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: Locale(identifier: "de_CH"), timeZone: tz))
+        let time = now.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: AppLanguageSettings.shared.locale, timeZone: tz))
         return HStack(spacing: 10) {
             Image(systemName: night ? "moon.stars.fill" : "sun.max.fill")
                 .foregroundStyle(night ? Color.indigo : Color.orange).frame(width: 18)

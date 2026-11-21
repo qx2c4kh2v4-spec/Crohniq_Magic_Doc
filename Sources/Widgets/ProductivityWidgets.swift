@@ -112,6 +112,258 @@ struct PomodoroWidget: View {
     }
 }
 
+final class CountdownTimerState: ObservableObject {
+    @Published private(set) var remaining: TimeInterval = 0
+    @Published private(set) var isRunning = false
+    private var deadline: Date?
+    private var ticker: Timer?
+    private var configuredMinutes: Int?
+
+    func configure(minutes: Int) {
+        let value = min(max(minutes, 1), 1440)
+        guard configuredMinutes != value else { return }
+        configuredMinutes = value
+        if !isRunning { remaining = TimeInterval(value * 60) }
+    }
+
+    func toggle(minutes: Int) {
+        if isRunning {
+            updateRemaining()
+            guard isRunning else { return }
+            isRunning = false
+            deadline = nil
+            ticker?.invalidate()
+            ticker = nil
+        } else {
+            if remaining <= 0 { remaining = TimeInterval(min(max(minutes, 1), 1440) * 60) }
+            deadline = Date().addingTimeInterval(remaining)
+            isRunning = true
+            ticker?.invalidate()
+            ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                self?.updateRemaining()
+            }
+        }
+    }
+
+    func reset(minutes: Int) {
+        ticker?.invalidate()
+        ticker = nil
+        deadline = nil
+        isRunning = false
+        remaining = TimeInterval(min(max(minutes, 1), 1440) * 60)
+    }
+
+    private func updateRemaining() {
+        guard let deadline else { return }
+        remaining = max(0, deadline.timeIntervalSinceNow)
+        guard remaining == 0 else { return }
+        self.deadline = nil
+        isRunning = false
+        ticker?.invalidate()
+        ticker = nil
+        NSSound(named: "Glass")?.play()
+        Notifier.notify("Timer abgelaufen", "Der Countdown ist beendet.")
+    }
+}
+
+struct CountdownTimerWidget: View {
+    let w: WidgetInstance
+    @StateObject private var state = CountdownTimerState()
+    @Environment(\.dockScale) private var s
+
+    var body: some View {
+        let minutes = min(max(w.cfgInt("duration", 5), 1), 1440)
+        let total = TimeInterval(minutes * 60)
+        let progress = min(max(1 - state.remaining / max(total, 1), 0), 1)
+        let text = format(state.remaining)
+        Group {
+            if w.size == 1 {
+                Button { state.toggle(minutes: minutes) } label: {
+                    ZStack {
+                        Ring(value: progress, color: .orange, lineWidth: 4 * s)
+                        VStack(spacing: 1 * s) {
+                            Text(text).font(.system(size: 13 * s, weight: .semibold, design: .rounded)).monospacedDigit()
+                                .minimumScaleFactor(0.6).lineLimit(1)
+                            Image(systemName: state.isRunning ? "pause.fill" : "play.fill")
+                                .font(.system(size: 9 * s, weight: .semibold))
+                                .foregroundStyle(Theme.secondary)
+                        }
+                    }
+                    .padding(7 * s)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                HStack(spacing: 6 * s) {
+                    VStack(alignment: .leading, spacing: 2 * s) {
+                        Text(text).font(.system(size: w.size == 2 ? 22 * s : 26 * s,
+                                                weight: .semibold, design: .rounded)).monospacedDigit()
+                            .minimumScaleFactor(0.5).lineLimit(1)
+                        if w.size >= 3 {
+                            Text(state.isRunning ? "Läuft" : "Bereit")
+                                .font(.system(size: 9 * s)).foregroundStyle(Theme.secondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    CircleButton(symbol: "arrow.counterclockwise", size: w.size == 2 ? 22 : 26) {
+                        state.reset(minutes: minutes)
+                    }
+                    .help("Timer zurücksetzen")
+                    CircleButton(symbol: state.isRunning ? "pause.fill" : "play.fill",
+                                 size: w.size == 2 ? 28 : 34, fill: .orange) {
+                        state.toggle(minutes: minutes)
+                    }
+                    .help(state.isRunning ? "Timer pausieren" : "Timer starten")
+                }
+                .padding(.horizontal, min(6 * s, 8))
+                .padding(.vertical, 4 * s)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear { state.configure(minutes: minutes) }
+        .onChange(of: minutes) { _, value in state.configure(minutes: value) }
+        .onWidgetAction(w.id) { action in
+            if action == "reset" { state.reset(minutes: minutes) }
+        }
+    }
+
+    private func format(_ remaining: TimeInterval) -> String {
+        let seconds = Int(ceil(max(0, remaining)))
+        if seconds >= 3600 {
+            return String(format: "%d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+        }
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+final class FocusSession: ObservableObject {
+    static let shared = FocusSession()
+
+    @Published private(set) var isRunning = false
+    @Published private(set) var remaining: TimeInterval = 0
+
+    private let key = "focus.session.v1"
+    private var deadline: Date?
+    private var timer: Timer?
+
+    private init() {
+        let defaults = UserDefaults.standard
+        remaining = defaults.double(forKey: key + ".remaining")
+        if let savedDeadline = defaults.object(forKey: key + ".deadline") as? Date {
+            deadline = savedDeadline
+            isRunning = true
+            updateRemaining()
+            if isRunning { startTimer() }
+        }
+    }
+
+    func toggle(minutes: Int) {
+        if isRunning {
+            updateRemaining()
+            isRunning = false
+            deadline = nil
+            timer?.invalidate()
+            timer = nil
+            save()
+        } else {
+            if remaining <= 0 { remaining = TimeInterval(min(max(minutes, 1), 240) * 60) }
+            deadline = Date().addingTimeInterval(remaining)
+            isRunning = true
+            startTimer()
+            save()
+        }
+    }
+
+    func reset(minutes: Int) {
+        timer?.invalidate()
+        timer = nil
+        deadline = nil
+        isRunning = false
+        remaining = TimeInterval(min(max(minutes, 1), 240) * 60)
+        save()
+    }
+
+    private func startTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.updateRemaining()
+        }
+    }
+
+    private func updateRemaining() {
+        guard let deadline else { return }
+        remaining = max(0, deadline.timeIntervalSinceNow)
+        if remaining == 0 {
+            self.deadline = nil
+            isRunning = false
+            timer?.invalidate()
+            timer = nil
+            Notifier.notify("Fokuszeit beendet", "Deine Fokuszeit ist abgeschlossen.")
+        }
+        save()
+    }
+
+    private func save() {
+        let defaults = UserDefaults.standard
+        defaults.set(remaining, forKey: key + ".remaining")
+        defaults.set(deadline, forKey: key + ".deadline")
+    }
+}
+
+struct FocusWidget: View {
+    let w: WidgetInstance
+    @ObservedObject private var session = FocusSession.shared
+    @Environment(\.dockScale) private var s
+
+    var body: some View {
+        let duration = min(max(w.cfgInt("duration", 25), 1), 240)
+        let title = w.cfg("label", "Fokus")
+        let total = TimeInterval(duration * 60)
+        let shownRemaining = session.remaining > 0 ? session.remaining : total
+        let progress = session.isRunning ? 1 - session.remaining / max(total, 1) : 0
+        let color = Color.indigo
+
+        HStack(spacing: 8 * s) {
+            ZStack {
+                Ring(value: progress, color: color, lineWidth: 4 * s)
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 14 * s, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            .frame(width: 42 * s, height: 42 * s)
+            VStack(alignment: .leading, spacing: 2 * s) {
+                Text(title).font(.system(size: 11 * s, weight: .semibold)).lineLimit(1)
+                Text(String(format: "%d:%02d", Int(shownRemaining) / 60, Int(shownRemaining) % 60))
+                    .font(.system(size: 16 * s, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                if w.size >= 3 {
+                    Text(session.isRunning ? "Läuft" : "Bereit")
+                        .font(.system(size: 9 * s))
+                        .foregroundStyle(Theme.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+            if w.size >= 3 {
+                CircleButton(symbol: "arrow.counterclockwise", size: 25) { session.reset(minutes: duration) }
+                    .help("Fokuszeit zurücksetzen")
+            }
+            CircleButton(symbol: session.isRunning ? "pause.fill" : "play.fill",
+                         size: 32, fill: color.opacity(0.25), tint: color) {
+                session.toggle(minutes: duration)
+            }
+            .help(session.isRunning ? "Fokuszeit pausieren" : "Fokuszeit starten")
+        }
+        .tilePadding(s)
+        .onAppear {
+            if session.remaining == 0 { session.reset(minutes: duration) }
+        }
+        .onChange(of: duration) { _, value in
+            if !session.isRunning { session.reset(minutes: value) }
+        }
+    }
+}
+
 // MARK: - Drink water
 
 struct WaterWidget: View {
@@ -340,12 +592,15 @@ struct CalendarWidget: View {
     @ObservedObject private var ticker = Ticker.shared
     @Environment(\.dockScale) private var s
 
+    private var display: String { w.cfg("display", "standard") }
+    private var eventLimit: Int { display == "next" ? 1 : (display == "agenda" ? 3 : 2) }
+
     var body: some View {
         HStack(spacing: 10 * s) {
             VStack(spacing: 0) {
                 Text(ticker.now.formatted(.dateTime.day()))
                     .font(.system(size: 24 * s, weight: .semibold, design: .rounded))
-                Text(ticker.now.formatted(.dateTime.month(.abbreviated).locale(Locale(identifier: "de_CH"))))
+                Text(ticker.now.formatted(.dateTime.month(.abbreviated).locale(AppLanguageSettings.shared.locale)))
                     .font(.system(size: 10 * s)).foregroundStyle(Theme.secondary)
             }
             .frame(width: 40 * s)
@@ -367,7 +622,7 @@ struct CalendarWidget: View {
             .help(ek.events.first.map { "\($0.title ?? "") – \(timeText($0))" } ?? "Keine weiteren Termine")
             .onTapGesture { if w.size == 1 && !ek.eventsAuthorized { ek.requestEvents() } }
 
-            if w.size == 1 {
+            if w.size == 1 || display == "date" {
                 EmptyView()
             } else if !ek.eventsAuthorized {
                 Button("Kalender erlauben") { ek.requestEvents() }.font(.system(size: 11 * s)).buttonStyle(.plain)
@@ -378,11 +633,20 @@ struct CalendarWidget: View {
                 Spacer(minLength: 0)
             } else {
                 VStack(alignment: .leading, spacing: 3 * s) {
-                    ForEach(ek.events.prefix(2), id: \.calendarItemIdentifier) { e in
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(e.title ?? "").font(.system(size: 11 * s, weight: .semibold)).lineLimit(1)
-                                .foregroundStyle(Color(nsColor: e.calendar.color).mix(with: .white, by: 0.25))
-                            Text(timeText(e)).font(.system(size: 10 * s)).foregroundStyle(Theme.secondary).lineLimit(1)
+                    ForEach(ek.events.prefix(eventLimit), id: \.calendarItemIdentifier) { e in
+                        if display == "agenda" {
+                            HStack(spacing: 4 * s) {
+                                Text(e.title ?? "").font(.system(size: 10 * s, weight: .semibold)).lineLimit(1)
+                                    .foregroundStyle(Color(nsColor: e.calendar.color).mix(with: .white, by: 0.25))
+                                Spacer(minLength: 0)
+                                Text(timeText(e)).font(.system(size: 9 * s)).foregroundStyle(Theme.secondary).lineLimit(1)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(e.title ?? "").font(.system(size: 11 * s, weight: .semibold)).lineLimit(1)
+                                    .foregroundStyle(Color(nsColor: e.calendar.color).mix(with: .white, by: 0.25))
+                                Text(timeText(e)).font(.system(size: 10 * s)).foregroundStyle(Theme.secondary).lineLimit(1)
+                            }
                         }
                     }
                 }
@@ -390,8 +654,8 @@ struct CalendarWidget: View {
                 if let next = ek.events.first, let url = meetingURL(next), next.startDate.timeIntervalSinceNow < 600 {
                     CircleButton(symbol: "video.fill", size: 30, fill: .blue) { NSWorkspace.shared.open(url) }
                         .help("Meeting beitreten")
-                } else if ek.events.count > 2 {
-                    Text("+\(ek.events.count - 2)").font(.system(size: 10 * s)).foregroundStyle(Theme.secondary)
+                } else if ek.events.count > eventLimit {
+                    Text("+\(ek.events.count - eventLimit)").font(.system(size: 10 * s)).foregroundStyle(Theme.secondary)
                 }
             }
         }
@@ -402,7 +666,7 @@ struct CalendarWidget: View {
     }
 
     private func timeText(_ e: EKEvent) -> String {
-        let f = Date.FormatStyle(date: .omitted, time: .shortened).locale(Locale(identifier: "de_CH"))
+        let f = Date.FormatStyle(date: .omitted, time: .shortened).locale(AppLanguageSettings.shared.locale)
         let day = Calendar.current.isDateInToday(e.startDate) ? "" : "morgen "
         if e.startDate <= Date() { return "läuft · bis \(e.endDate.formatted(f))" }
         let mins = Int(e.startDate.timeIntervalSinceNow / 60)
@@ -486,7 +750,7 @@ struct RemindersWidget: View {
         if d < Date() && !Calendar.current.isDateInToday(d) { return "Überfällig" }
         if Calendar.current.isDateInToday(d) { return d.formatted(date: .omitted, time: .shortened) }
         if Calendar.current.isDateInTomorrow(d) { return "Morgen" }
-        return d.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "de_CH")))
+        return d.formatted(.dateTime.day().month(.abbreviated).locale(AppLanguageSettings.shared.locale))
     }
 }
 
@@ -540,9 +804,9 @@ struct ProgressWidget: View {
 
     private func compute(_ now: Date) -> (Double, String, Int, Int) {
         var cal = Calendar(identifier: .gregorian)
-        cal.locale = Locale(identifier: "de_CH")
+        cal.locale = AppLanguageSettings.shared.locale
         cal.firstWeekday = 2
-        let de = Locale(identifier: "de_CH")
+        let de = AppLanguageSettings.shared.locale
         switch w.cfg("mode", "year") {
         case "month":
             let iv = cal.dateInterval(of: .month, for: now)!

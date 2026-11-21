@@ -146,7 +146,7 @@ final class WorkspaceManager: ObservableObject {
         activeID = ws.id
         status = "„\(ws.name)“ wird vorbereitet …"
         if let p = ws.dockProfileID, DockStore.shared.profiles.contains(where: { $0.id == p }) {
-            DockStore.shared.activeProfileID = p
+            DockStore.shared.switchProfile(p)
         }
         if ws.setNativeDock { NativeDock.set(apps: ws.apps.map(\.path)) }
 

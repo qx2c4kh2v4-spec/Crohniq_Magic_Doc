@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import FoundationModels
 import SwiftUI
 
@@ -43,7 +44,7 @@ enum SearchEngine: String, CaseIterable, Identifiable {
 
     var isAvailable: Bool {
         switch self {
-        case .apple: SystemLanguageModel.default.availability == .available
+        case .apple: true
         case .chatgpt: NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.chatGPTID) != nil
         case .claude: NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.claudeID) != nil
         default: true
@@ -124,10 +125,20 @@ enum SearchEngine: String, CaseIterable, Identifiable {
 /// General questions answered on-device by Apple Intelligence.
 @MainActor
 final class GeneralAI: ObservableObject {
-    struct Turn: Identifiable { let id = UUID(); let question: String; var answer = ""; var failed = false }
+    struct Turn: Identifiable, Codable { let id = UUID(); let question: String; var answer = ""; var failed = false }
+    static let shared = GeneralAI()
+
     @Published var turns: [Turn] = []
     @Published var busy = false
     private var session: LanguageModelSession?
+    private let historyKey = "ai.general.history"
+
+    private init() {
+        if let data = UserDefaults.standard.data(forKey: historyKey),
+           let saved = try? JSONDecoder().decode([Turn].self, from: data) {
+            turns = Array(saved.suffix(50))
+        }
+    }
 
     func ask(_ q: String) {
         guard !q.isEmpty, !busy else { return }
@@ -139,6 +150,8 @@ final class GeneralAI: ObservableObject {
             session = LanguageModelSession(instructions: "Du bist ein hilfreicher Assistent. Antworte knapp und auf Deutsch, ausser der Nutzer schreibt in einer anderen Sprache.")
         }
         turns.append(Turn(question: q))
+        if turns.count > 50 { turns.removeFirst(turns.count - 50) }
+        saveHistory()
         let i = turns.count - 1
         busy = true
         Task {
@@ -150,15 +163,26 @@ final class GeneralAI: ObservableObject {
                 turns[i].failed = true
                 session = nil
             }
+            saveHistory()
             busy = false
         }
     }
 
-    func reset() { turns = []; session = nil }
+    func reset() {
+        turns = []
+        session = nil
+        UserDefaults.standard.removeObject(forKey: historyKey)
+    }
+
+    private func saveHistory() {
+        guard let data = try? JSONEncoder().encode(turns) else { return }
+        UserDefaults.standard.set(data, forKey: historyKey)
+    }
 }
 
 struct GeneralAIPanel: View {
     @ObservedObject var ai: GeneralAI
+    let count: Int
     @State private var followUp = ""
 
     var body: some View {
@@ -172,7 +196,7 @@ struct GeneralAIPanel: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    ForEach(ai.turns) { t in
+                    ForEach(ai.turns.suffix(min(max(count, 1), 50))) { t in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(t.question).font(.callout.weight(.semibold))
                             if t.answer.isEmpty {
@@ -198,5 +222,51 @@ struct GeneralAIPanel: View {
             .padding(10)
         }
         .frame(width: 440)
+    }
+}
+
+struct AppleIntelligenceWidget: View {
+    let w: WidgetInstance
+    @StateObject private var ai = GeneralAI.shared
+    @State private var question = ""
+    @State private var showingAI = false
+    @FocusState private var focused: Bool
+    @Environment(\.dockScale) private var s
+
+    var body: some View {
+        HStack(spacing: 8 * s) {
+            Image(systemName: "apple.intelligence")
+                .font(.system(size: 20 * s, weight: .medium))
+                .foregroundStyle(.purple)
+            TextField("Apple Intelligence fragen …", text: $question)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12 * s))
+                .focused($focused)
+                .onSubmit(submit)
+                .onTapGesture {
+                    NSApp.activate(ignoringOtherApps: true)
+                    focused = true
+                }
+            Button(action: submit) {
+                Image(systemName: ai.busy ? "ellipsis" : "paperplane.fill")
+                    .font(.system(size: 13 * s, weight: .semibold))
+                    .foregroundStyle(.purple)
+            }
+            .buttonStyle(.plain)
+            .disabled(ai.busy || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Frage an Apple Intelligence senden")
+        }
+        .tilePadding(s)
+        .popover(isPresented: $showingAI, arrowEdge: .top) {
+            GeneralAIPanel(ai: ai, count: min(max(Int(w.cfg("unrollCount", "10")) ?? 10, 1), 50))
+        }
+    }
+
+    private func submit() {
+        let prompt = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        ai.ask(prompt)
+        question = ""
+        showingAI = true
     }
 }

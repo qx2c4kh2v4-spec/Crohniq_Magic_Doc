@@ -18,7 +18,7 @@ struct ClockWidget: View {
 
     var body: some View {
         let now = ticker.now
-        let de = Locale(identifier: "de_CH")
+        let de = AppLanguageSettings.shared.locale
         let time = now.formatted(timeStyle(de))
         let date = w.size == 1
             ? now.formatted(Date.FormatStyle(date: .omitted, time: .omitted, locale: de, timeZone: tz)
@@ -140,7 +140,7 @@ struct WeatherWidget: View {
                         HStack(spacing: 10 * s) {
                             ForEach(Array(d.days.prefix(w.size == 2 ? 1 : w.size == 3 ? 3 : 5))) { day in
                                 VStack(spacing: 3 * s) {
-                                    Text(day.date.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "de_CH"))))
+                                    Text(day.date.formatted(.dateTime.weekday(.abbreviated).locale(AppLanguageSettings.shared.locale)))
                                         .font(.system(size: 10 * s, weight: .medium)).foregroundStyle(Theme.secondary)
                                     Image(systemName: WeatherService.symbol(day.code)).symbolRenderingMode(.multicolor)
                                         .font(.system(size: 14 * s))
@@ -398,8 +398,10 @@ struct AppSwitcherWidget: View {
 
     var body: some View {
         let icon = 34 * s
+        let tileWidth = CGFloat(w.size * 64 + (w.size - 1) * 8)
+        let capacity = max(1, Int((tileWidth - 14) / 40))
         HStack(spacing: 6 * s) {
-            ForEach(apps.prefix(w.size * 2 - 1), id: \.processIdentifier) { app in
+            ForEach(apps.prefix(capacity), id: \.processIdentifier) { app in
                 Image(nsImage: app.icon ?? NSImage()).resizable()
                     .frame(width: icon, height: icon)
                     .overlay(alignment: .bottom) {
@@ -415,6 +417,8 @@ struct AppSwitcherWidget: View {
             }
         }
         .tilePadding(s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .onAppear(perform: reload)
         .onReceive(timer) { _ in reload() }
     }
@@ -563,7 +567,7 @@ struct SearchWidget: View {
     @State private var results: [String] = []
     @State private var showResults = false
     @FocusState private var focused: Bool
-    @StateObject private var ai = GeneralAI()
+    @StateObject private var ai = GeneralAI.shared
     @State private var showAI = false
 
     private var engine: SearchEngine { SearchEngine.of(w) }
@@ -595,7 +599,9 @@ struct SearchWidget: View {
         .padding(.horizontal, 4 * s)
         .contentShape(Rectangle())
         .onTapGesture { NSApp.activate(ignoringOtherApps: true); focused = true }
-        .popover(isPresented: $showAI, arrowEdge: .top) { GeneralAIPanel(ai: ai) }
+        .popover(isPresented: $showAI, arrowEdge: .top) {
+            GeneralAIPanel(ai: ai, count: min(max(Int(w.cfg("unrollCount", "10")) ?? 10, 1), 50))
+        }
         .popover(isPresented: $showResults, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 if results.isEmpty {

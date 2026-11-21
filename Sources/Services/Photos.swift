@@ -7,16 +7,25 @@ final class PhotoLibrary: ObservableObject {
 
     @Published private(set) var authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
     @Published private(set) var assets: [PHAsset] = []
+    @Published private(set) var panoramas: [PHAsset] = []
+    @Published private(set) var appleWallpapers: [URL] = []
 
     private var requestingAuthorization = false
     private var didLoad = false
+    private var didLoadWallpapers = false
 
     func refresh(force: Bool = false) {
+        if force || !didLoadWallpapers {
+            appleWallpapers = Self.loadAppleWallpapers()
+            didLoadWallpapers = true
+        }
+
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         authorization = status
 
         guard status == .authorized || status == .limited else {
             assets = []
+            panoramas = []
             guard status == .notDetermined, !requestingAuthorization else { return }
             requestingAuthorization = true
             PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] status in
@@ -37,6 +46,22 @@ final class PhotoLibrary: ObservableObject {
         var fetched: [PHAsset] = []
         result.enumerateObjects { asset, _, _ in fetched.append(asset) }
         assets = fetched
+
+        let panoramaCollections = PHAssetCollection.fetchAssetCollections(
+            with: .smartAlbum,
+            subtype: .smartAlbumPanoramas,
+            options: nil
+        )
+        if let collection = panoramaCollections.firstObject {
+            let panoramaOptions = PHFetchOptions()
+            panoramaOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            let panoramaResult = PHAsset.fetchAssets(in: collection, options: panoramaOptions)
+            var fetchedPanoramas: [PHAsset] = []
+            panoramaResult.enumerateObjects { asset, _, _ in fetchedPanoramas.append(asset) }
+            panoramas = fetchedPanoramas
+        } else {
+            panoramas = []
+        }
         didLoad = true
     }
 
@@ -57,6 +82,37 @@ final class PhotoLibrary: ObservableObject {
 
     static func openPrivacySettings() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos")!)
+    }
+
+    private static func loadAppleWallpapers() -> [URL] {
+        let fileManager = FileManager.default
+        let roots = [
+            URL(fileURLWithPath: "/System/Library/Desktop Pictures", isDirectory: true),
+            URL(fileURLWithPath: "/Library/Desktop Pictures", isDirectory: true)
+        ]
+        let imageExtensions: Set<String> = ["heic", "jpeg", "jpg", "png", "tif", "tiff"]
+        var wallpapers = Set<URL>()
+
+        for root in roots where fileManager.fileExists(atPath: root.path) {
+            guard let enumerator = fileManager.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [],
+                errorHandler: { url, error in
+                    NSLog("Could not read Apple wallpaper at %@: %@", url.path, error.localizedDescription)
+                    return true
+                }
+            ) else { continue }
+
+            for case let url as URL in enumerator
+            where imageExtensions.contains(url.pathExtension.lowercased()) {
+                wallpapers.insert(url)
+            }
+        }
+
+        return wallpapers.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
     }
 }
 

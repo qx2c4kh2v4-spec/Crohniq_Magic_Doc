@@ -26,7 +26,7 @@ enum WidgetCategory: String, CaseIterable, Identifiable {
 
 struct ConfigField {
     enum Kind {
-        case text, secure, multiline, number
+        case text, secure, multiline, number, directory
         case choice([(value: String, label: String)])
     }
     let key: String
@@ -37,11 +37,11 @@ struct ConfigField {
 }
 
 enum WidgetKind: String, Codable, CaseIterable, Identifiable {
-    case clock, weather, nowPlaying, apps, appSwitcher, bookmarks, fileShelf, downloads, finder, search
-    case pomodoro, water, calendar, reminders, progress, stopwatch, notes, mail
-    case battery, cpu, memory, disk, cpuGraph, toggles, audio, clipboard, screenshots, voiceMemo, emoji, photos
-    case colorPicker, converter, github, metric
-    case nexus, workspaces, launcher, quitApps
+    case clock, weather, nowPlaying, apps, appSwitcher, bookmarks, fileShelf, downloads, finder, dropbox, shortcuts, search
+    case pomodoro, timer, focus, water, calendar, reminders, progress, stopwatch, notes, mail
+    case battery, cpu, memory, disk, cpuGraph, toggles, audio, clipboard, screenshots, voiceMemo, emoji, photos, panoramas
+    case colorPicker, converter, github, developerUsage, metric
+    case nexus, appleIntelligence, workspaces, launcher, quitApps
 
     var id: String { rawValue }
 
@@ -61,8 +61,12 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .fileShelf: "Ablage"
         case .downloads: "Downloads"
         case .finder: "Finder"
+        case .dropbox: "Dropbox"
+        case .shortcuts: "Kurzbefehle"
         case .search: "Suche"
         case .pomodoro: "Pomodoro"
+        case .timer: "Timer"
+        case .focus: "Fokuszeit"
         case .water: "Trinken"
         case .calendar: "Kalender"
         case .reminders: "Erinnerungen"
@@ -82,11 +86,14 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .voiceMemo: "Sprachmemo"
         case .emoji: "Emoji"
         case .photos: "Fotos"
+        case .panoramas: "Panorama-Hintergründe"
         case .colorPicker: "Farbpipette"
         case .converter: "Währungsrechner"
         case .github: "GitHub"
+        case .developerUsage: "KI- und Entwickler-Kontingente"
         case .metric: "Kennzahl (JSON)"
         case .nexus: "Nexus-Suche & KI"
+        case .appleIntelligence: "Apple Intelligence"
         case .workspaces: "Arbeitsbereiche"
         case .launcher: "App-Starter"
         case .quitApps: "Apps beenden"
@@ -104,8 +111,12 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .fileShelf: "tray"
         case .downloads: "arrow.down.circle"
         case .finder: "folder"
+        case .dropbox: "shippingbox"
+        case .shortcuts: "command"
         case .search: "magnifyingglass"
         case .pomodoro: "timer"
+        case .timer: "timer.circle"
+        case .focus: "moon.fill"
         case .water: "drop"
         case .calendar: "calendar"
         case .reminders: "checklist"
@@ -125,11 +136,14 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .voiceMemo: "waveform"
         case .emoji: "face.smiling"
         case .photos: "photo"
+        case .panoramas: "pano.fill"
         case .colorPicker: "eyedropper"
         case .converter: "dollarsign.arrow.circlepath"
         case .github: "chevron.left.forwardslash.chevron.right"
+        case .developerUsage: "speedometer"
         case .metric: "chart.bar"
         case .nexus: "sparkle.magnifyingglass"
+        case .appleIntelligence: "apple.intelligence"
         case .workspaces: "rectangle.3.group"
         case .launcher: "app.badge"
         case .quitApps: "xmark.app"
@@ -138,12 +152,12 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
 
     var category: WidgetCategory {
         switch self {
-        case .apps, .appSwitcher, .bookmarks, .fileShelf, .downloads, .finder, .search, .nexus, .workspaces, .launcher: .apps
-        case .clock, .quitApps, .pomodoro, .water, .calendar, .reminders, .progress, .stopwatch, .mail: .productivity
+        case .apps, .appSwitcher, .bookmarks, .fileShelf, .downloads, .finder, .dropbox, .shortcuts, .search, .nexus, .workspaces, .launcher: .apps
+        case .clock, .quitApps, .pomodoro, .timer, .focus, .appleIntelligence, .water, .calendar, .reminders, .progress, .stopwatch, .mail: .productivity
         case .weather, .nowPlaying, .battery, .cpu, .memory, .disk, .cpuGraph, .toggles, .audio,
-             .clipboard, .screenshots, .voiceMemo, .emoji, .photos, .quitApps: .system
+             .clipboard, .screenshots, .voiceMemo, .emoji, .photos, .panoramas, .quitApps: .system
         case .notes, .colorPicker, .converter: .utility
-        case .github, .metric: .business
+        case .github, .developerUsage, .metric: .business
         }
     }
 
@@ -159,8 +173,13 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .fileShelf: [1, 2, 3, 4]
         case .downloads: [1, 2, 3]
         case .finder: [1, 2, 3]
+        case .dropbox: [1, 2, 3, 4]
+        case .shortcuts: [1, 2, 3, 4]
         case .search: [2, 3, 4, 5]
         case .pomodoro: [1, 2, 3]
+        case .timer: [1, 2, 3]
+        case .focus: [1, 2, 3]
+        case .appleIntelligence: [2, 3, 4]
         case .water: [1, 2, 3]
         case .calendar: [1, 2, 3, 4]
         case .reminders: [1, 2, 3, 4]
@@ -177,9 +196,11 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .voiceMemo: [1, 2, 3]
         case .emoji: [1, 2, 3, 4]
         case .photos: [1, 2, 3]
+        case .panoramas: [2, 3, 4, 5]
         case .colorPicker: [1, 2, 3]
         case .converter: [1, 2, 3, 4]
         case .github: [1, 2, 3, 4]
+        case .developerUsage: [3, 4]
         case .metric: [1, 2, 3]
         case .nexus: [2, 3, 4, 5, 6]
         case .workspaces: [1, 2, 3, 4, 5]
@@ -190,11 +211,14 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
 
     var defaultSize: Int {
         switch self {
-        case .clock, .pomodoro, .water, .bookmarks, .fileShelf, .progress, .stopwatch, .screenshots, .metric: 2
+        case .clock, .pomodoro, .timer, .focus, .water, .bookmarks, .fileShelf, .progress, .stopwatch, .metric: 2
         case .weather, .calendar, .reminders, .cpuGraph, .audio, .voiceMemo, .emoji, .converter, .github,
              .notes, .search, .appSwitcher: 3
+        case .screenshots: 3
         case .nowPlaying, .toggles, .nexus: 4
-        case .workspaces, .launcher: 3
+        case .developerUsage: 3
+        case .workspaces, .launcher, .dropbox, .shortcuts, .appleIntelligence: 3
+        case .panoramas: 4
         default: 1
         }
     }
@@ -203,11 +227,24 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .clock: ["style": "digital", "timezone": "", "label": "", "seconds": "0"]
         case .weather: ["city": "auto"]
+        case .calendar: ["display": "standard"]
         case .apps: ["paths": ["/System/Library/CoreServices/Finder.app", "/Applications/Safari.app",
                                "/System/Applications/Mail.app", "/System/Applications/Music.app"].joined(separator: "\n")]
+        case .finder: ["favorites": "", "fileCount": "10"]
+        case .dropbox:
+            ["folder": FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Library/CloudStorage/Dropbox")
+                ? NSHomeDirectory() + "/Library/CloudStorage/Dropbox"
+                : NSHomeDirectory() + "/Dropbox",
+             "count": "5"]
+        case .shortcuts: ["count": "5", "favorites": ""]
+        case .photos: ["count": "5"]
+        case .panoramas: ["count": "10", "interval": "30"]
         case .bookmarks: ["source": "safari", "folder": "", "items": "Google|https://www.google.com\nGitHub|https://github.com"]
         case .search: ["mode": "files", "engine": "google"]
+        case .mail: ["count": "10", "mailFilter": "all"]
         case .pomodoro: ["work": "25", "break": "5"]
+        case .timer: ["duration": "5"]
+        case .focus: ["duration": "25", "label": "Fokus"]
         case .water: ["goal": "8", "interval": "45"]
         case .progress: ["mode": "year"]
         case .emoji: ["emojis": "😂✨✅🔥🥹🙏💡🚀❤️👍🎉😎"]
@@ -217,7 +254,8 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .reminders: ["list": ""]
         case .launcher:
             ["apps": (["/Applications/Xcode.app"] + ["/Applications/Safari.app", "/Applications/Firefox.app"]
-                .filter { FileManager.default.fileExists(atPath: $0) }).joined(separator: "\n")]
+                .filter { FileManager.default.fileExists(atPath: $0) }).joined(separator: "\n"),
+             "fileCount": "10", "safariView": "history", "forkLiftMode": "app", "forkLiftFolder": ""]
         default: [:]
         }
     }
@@ -232,17 +270,52 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .weather:
             [ConfigField(key: "city", label: "Ort", placeholder: "auto",
                          help: "„auto“ oder leer = aktueller Standort (Ortungsdienste). Sonst einen Ort eintragen, z. B. „Winterthur“ oder „Konstanz, Deutschland“.")]
+        case .calendar:
+            [ConfigField(key: "display", label: "Anzeige", kind: .choice([
+                ("standard", "Standard"), ("date", "Datum"), ("next", "Nächster Termin"), ("agenda", "Agenda")
+            ]))]
         case .apps:
             [ConfigField(key: "paths", label: "Apps / Ordner (ein Pfad pro Zeile)", kind: .multiline,
                          help: "Du kannst auch Apps oder Ordner direkt auf das Widget ziehen.")]
+        case .finder:
+            [ConfigField(key: "favorites", label: "Favoriten-Verzeichnisse (ein Pfad pro Zeile)", kind: .multiline,
+                         help: "Die Ordner erscheinen im aufgeklappten Finder-Widget und lassen sich dort direkt öffnen."),
+             ConfigField(key: "fileCount", label: "Zuletzt geöffnete Dateien anzeigen", kind: .number,
+                         help: "Anzahl der Einträge im Finder-Aufklappbereich (1–50).")]
+        case .dropbox:
+            [ConfigField(key: "folder", label: "Dropbox-Verzeichnis", kind: .directory,
+                         help: "Wähle den synchronisierten Dropbox-Ordner auf diesem Mac."),
+             ConfigField(key: "count", label: "Dateien anzeigen", kind: .number,
+                         help: "Anzahl der zuletzt geänderten Dateien (1–50).")]
+        case .shortcuts:
+            [ConfigField(key: "count", label: "Kurzbefehle anzeigen", kind: .number,
+                         help: "Anzahl der Schaltflächen im Widget (1–12).")]
+        case .photos:
+            [ConfigField(key: "count", label: "Letzte Fotos anzeigen", kind: .number,
+                         help: "Anzahl der Fotos im Widget und Aufklappbereich (1–12).")]
+        case .panoramas:
+            [ConfigField(key: "count", label: "Bilder im Wechsel", kind: .number,
+                         help: "Anzahl der Panorama-Fotos und Apple-Hintergrundbilder (1–50)."),
+             ConfigField(key: "interval", label: "Hintergrund wechseln alle … Sekunden", kind: .number,
+                         help: "Mindestens 5 Sekunden.")]
         case .bookmarks:
             [ConfigField(key: "source", label: "Quelle", kind: .choice([("safari", "Safari-Lesezeichen"), ("custom", "Eigene Liste")])),
              ConfigField(key: "folder", label: "Safari-Ordner auf der Kachel", placeholder: "leer = Favoritenleiste",
                          help: "Safari braucht Festplattenvollzugriff (Systemeinstellungen › Datenschutz & Sicherheit). Das ▾ zeigt immer alle Ordner."),
              ConfigField(key: "items", label: "Eigene Liste (Name|URL pro Zeile)", kind: .multiline)]
         case .launcher:
-            [ConfigField(key: "apps", label: "Apps (ein Pfad pro Zeile, nebeneinander)", kind: .multiline,
-                         help: "Apps einfach auf das Widget ziehen oder über das ＋ hinzufügen. Beim Überfahren erscheinen zuletzt verwendete Dateien; für Safari und Firefox auch die letzten besuchten Seiten.")]
+            [ConfigField(key: "fileCount", label: "Standard-Dateiverlauf je App", kind: .number,
+                         help: "Voreinstellung für Apps ohne eigene Anzahl (1–50)."),
+             ConfigField(key: "safariView", label: "Safari zeigt", kind: .choice([("history", "Verlauf"), ("favorites", "Favoriten")])),
+             ConfigField(key: "forkLiftMode", label: "ForkLift-Klick", kind: .choice([("app", "App sofort öffnen"), ("folder", "Dateien aus Verzeichnis anzeigen")])),
+             ConfigField(key: "forkLiftFolder", label: "ForkLift-Verzeichnis", kind: .directory,
+                         help: "Wird im Dateien-Modus verwendet.")]
+        case .mail:
+            [ConfigField(key: "mailFilter", label: "Mails anzeigen", kind: .choice([
+                ("unread", "Nur neue (ungelesene)"),
+                ("all", "Alle"),
+                ("known", "Bekannte Absender (Kontakte)")
+            ]))]
         case .nexus:
             [ConfigField(key: "mode", label: "Enter startet", kind: .choice([("search", "Nexus-Suche"), ("ai", "KI (Apple Intelligence)")]),
                          help: "Mit ✨ wechselst du jederzeit zwischen Suche und KI. Die KI läuft lokal auf dem Mac.")]
@@ -253,6 +326,13 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .pomodoro:
             [ConfigField(key: "work", label: "Fokus (Minuten)", kind: .number),
              ConfigField(key: "break", label: "Pause (Minuten)", kind: .number)]
+        case .timer:
+            [ConfigField(key: "duration", label: "Dauer (Minuten)", kind: .number,
+                         help: "Countdown-Dauer von 1 bis 1440 Minuten.")]
+        case .focus:
+            [ConfigField(key: "label", label: "Bezeichnung", placeholder: "Fokus"),
+             ConfigField(key: "duration", label: "Dauer (Minuten)", kind: .number,
+                         help: "App-lokaler Fokus-Timer; schaltet keinen macOS-Fokusmodus um.")]
         case .water:
             [ConfigField(key: "goal", label: "Gläser pro Tag", kind: .number),
              ConfigField(key: "interval", label: "Erinnerung alle … Minuten (0 = aus)", kind: .number)]
@@ -302,6 +382,16 @@ struct WidgetInstance: Codable, Identifiable, Equatable {
         return kind.defaultConfig[key].flatMap { $0.isEmpty ? nil : $0 } ?? fallback
     }
 
+    var displayName: String {
+        let name = (config["widgetName"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? kind.title : name
+    }
+
+    var assignedWorkspaceIDs: Set<UUID>? {
+        guard let value = config["workspaceIDs"] else { return nil }
+        return Set(value.split(separator: "\n").compactMap { UUID(uuidString: String($0)) })
+    }
+
     func cfgInt(_ key: String, _ fallback: Int) -> Int { Int(cfg(key)) ?? fallback }
 }
 
@@ -309,6 +399,42 @@ struct DockProfile: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
     var widgets: [WidgetInstance]
+    var theme: String? = nil
+}
+
+enum DockProfilePreset: String, CaseIterable, Identifiable {
+    case daily, developer, writing, focus
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .daily: "Daily"
+        case .developer: "Developer"
+        case .writing: "Writing"
+        case .focus: "Fokus"
+        }
+    }
+
+    var theme: String {
+        switch self {
+        case .daily: "system"
+        case .developer: "anthracite"
+        case .writing: "light"
+        case .focus: "dark"
+        }
+    }
+
+    var widgets: [WidgetInstance] {
+        let kinds: [WidgetKind]
+        switch self {
+        case .daily: kinds = [.clock, .calendar, .weather, .reminders, .mail, .photos, .dropbox, .shortcuts, .appleIntelligence]
+        case .developer: kinds = [.clock, .launcher, .github, .developerUsage, .cpuGraph, .clipboard, .workspaces]
+        case .writing: kinds = [.clock, .notes, .pomodoro, .calendar, .bookmarks]
+        case .focus: kinds = [.clock, .focus, .pomodoro, .reminders, .water, .progress]
+        }
+        return kinds.filter(\.isAvailable).map { WidgetInstance($0) }
+    }
 }
 
 enum DockPosition: String, Codable, CaseIterable, Identifiable {
@@ -324,6 +450,123 @@ enum DockPosition: String, Codable, CaseIterable, Identifiable {
         }
     }
     var isVertical: Bool { self == .left || self == .right }
+}
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system = "system"
+    case bulgarian = "bg"
+    case catalan = "ca"
+    case croatian = "hr"
+    case czech = "cs"
+    case danish = "da"
+    case dutch = "nl"
+    case english = "en"
+    case estonian = "et"
+    case finnish = "fi"
+    case french = "fr"
+    case german = "de"
+    case greek = "el"
+    case hungarian = "hu"
+    case icelandic = "is"
+    case irish = "ga"
+    case italian = "it"
+    case latvian = "lv"
+    case lithuanian = "lt"
+    case luxembourgish = "lb"
+    case maltese = "mt"
+    case norwegian = "nb"
+    case polish = "pl"
+    case portuguese = "pt-PT"
+    case romanian = "ro"
+    case serbian = "sr"
+    case slovak = "sk"
+    case slovenian = "sl"
+    case spanish = "es"
+    case swedish = "sv"
+    case ukrainian = "uk"
+    case welsh = "cy"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: "System (macOS)"
+        case .bulgarian: "български"
+        case .catalan: "català"
+        case .croatian: "hrvatski"
+        case .czech: "čeština"
+        case .danish: "dansk"
+        case .dutch: "Nederlands"
+        case .english: "English"
+        case .estonian: "eesti"
+        case .finnish: "suomi"
+        case .french: "français"
+        case .german: "Deutsch"
+        case .greek: "Ελληνικά"
+        case .hungarian: "magyar"
+        case .icelandic: "íslenska"
+        case .irish: "Gaeilge"
+        case .italian: "italiano"
+        case .latvian: "latviešu"
+        case .lithuanian: "lietuvių"
+        case .luxembourgish: "lëtzebuergesch"
+        case .maltese: "Malti"
+        case .norwegian: "norsk bokmål"
+        case .polish: "polski"
+        case .portuguese: "português (Portugal)"
+        case .romanian: "română"
+        case .serbian: "српски"
+        case .slovak: "slovenčina"
+        case .slovenian: "slovenščina"
+        case .spanish: "español"
+        case .swedish: "svenska"
+        case .ukrainian: "українська"
+        case .welsh: "Cymraeg"
+        }
+    }
+
+    var locale: Locale {
+        self == .system ? .autoupdatingCurrent : Locale(identifier: rawValue)
+    }
+}
+
+final class AppLanguageSettings: ObservableObject {
+    static let shared = AppLanguageSettings()
+    private let key = "app.language"
+
+    @Published var language: AppLanguage {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: key) }
+    }
+
+    var locale: Locale { language.locale }
+
+    private init() {
+        language = AppLanguage(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .system
+    }
+}
+
+enum DockFontStyle: String, CaseIterable, Codable, Identifiable {
+    case system, rounded, serif, monospaced
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: "System"
+        case .rounded: "Rund"
+        case .serif: "Serif"
+        case .monospaced: "Monospace"
+        }
+    }
+
+    var design: Font.Design {
+        switch self {
+        case .system: .default
+        case .rounded: .rounded
+        case .serif: .serif
+        case .monospaced: .monospaced
+        }
+    }
 }
 
 struct DockSettings: Codable, Equatable {
@@ -350,6 +593,8 @@ struct DockSettings: Codable, Equatable {
     var customBar: String? = nil
     var customTile: String? = nil
     var customText: String? = nil
+    var fontStyle: DockFontStyle? = nil
+    var fontDesign: Font.Design { (fontStyle ?? .system).design }
     /// Unroll lists (calendar, reminders, notes) on hover.
     var hoverLists: Bool? = nil
     /// Tint strength of the glass (0 = clear glass).
@@ -363,7 +608,14 @@ final class DockStore: ObservableObject {
 
     @Published var profiles: [DockProfile] { didSet { save() } }
     @Published var activeProfileID: UUID { didSet { save() } }
-    @Published var settings: DockSettings { didSet { save() } }
+    @Published var settings: DockSettings {
+        didSet {
+            if profiles.indices.contains(activeIndex), profiles[activeIndex].theme != settings.theme {
+                profiles[activeIndex].theme = settings.theme
+            }
+            save()
+        }
+    }
     @Published var editingWidgetID: UUID?
 
     private let key = "dock.state.v1"
@@ -380,6 +632,9 @@ final class DockStore: ObservableObject {
             profiles = p.profiles
             activeProfileID = p.profiles.contains { $0.id == p.active } ? p.active : p.profiles[0].id
             settings = p.settings
+            if profiles[activeIndex].theme == nil {
+                profiles[activeIndex].theme = settings.theme
+            }
             if !UserDefaults.standard.bool(forKey: "migrated.weatherAuto") {
                 UserDefaults.standard.set(true, forKey: "migrated.weatherAuto")
                 for i in profiles.indices {
@@ -394,7 +649,7 @@ final class DockStore: ObservableObject {
             }
             if !UserDefaults.standard.bool(forKey: "migrated.requestedWidgets") {
                 UserDefaults.standard.set(true, forKey: "migrated.requestedWidgets")
-                for kind in [WidgetKind.audio, .clipboard, .screenshots, .finder]
+                for kind in [WidgetKind.audio, .clipboard, .screenshots, .finder, .mail, .photos]
                     where !profiles[0].widgets.contains(where: { $0.kind == kind }) {
                     profiles[0].widgets.append(WidgetInstance(kind))
                 }
@@ -410,12 +665,20 @@ final class DockStore: ObservableObject {
                 }
                 save()
             }
+            if !UserDefaults.standard.bool(forKey: "migrated.shortcutsWidget") {
+                UserDefaults.standard.set(true, forKey: "migrated.shortcutsWidget")
+                if !profiles[0].widgets.contains(where: { $0.kind == .shortcuts }) {
+                    profiles[0].widgets.append(WidgetInstance(.shortcuts))
+                }
+                save()
+            }
         } else {
             let main = DockProfile(name: "Standard", widgets: [
                 WidgetInstance(.clock), WidgetInstance(.weather), WidgetInstance(.nexus),
                 WidgetInstance(.workspaces), WidgetInstance(.bookmarks), WidgetInstance(.launcher),
                 WidgetInstance(Hardware.hasBattery ? .battery : .cpu), WidgetInstance(.calendar), WidgetInstance(.nowPlaying),
-                WidgetInstance(.audio), WidgetInstance(.clipboard), WidgetInstance(.screenshots), WidgetInstance(.finder),
+                WidgetInstance(.audio), WidgetInstance(.clipboard), WidgetInstance(.screenshots), WidgetInstance(.shortcuts),
+                WidgetInstance(.finder), WidgetInstance(.mail), WidgetInstance(.photos),
             ])
             let focus = DockProfile(name: "Fokus", widgets: [
                 WidgetInstance(.clock), WidgetInstance(.pomodoro), WidgetInstance(.reminders),
@@ -433,9 +696,23 @@ final class DockStore: ObservableObject {
     }
 
     var activeIndex: Int { profiles.firstIndex { $0.id == activeProfileID } ?? 0 }
-    var activeWidgets: [WidgetInstance] { profiles[activeIndex].widgets }
+    var allActiveWidgets: [WidgetInstance] { profiles[activeIndex].widgets }
 
-    func instance(_ id: UUID) -> WidgetInstance? { activeWidgets.first { $0.id == id } }
+    var activeWidgets: [WidgetInstance] {
+        widgets(for: WorkspaceManager.shared.activeID)
+    }
+
+    func widgets(for workspaceID: UUID?) -> [WidgetInstance] {
+        let widgets = allActiveWidgets
+        guard let workspaceID else { return widgets }
+        let existingIDs = Set(WorkspaceManager.shared.workspaces.map(\.id))
+        return widgets.filter { widget in
+            guard let assigned = widget.assignedWorkspaceIDs else { return true }
+            return assigned.intersection(existingIDs).contains(workspaceID)
+        }
+    }
+
+    func instance(_ id: UUID) -> WidgetInstance? { allActiveWidgets.first { $0.id == id } }
 
     func update(_ id: UUID, _ change: (inout WidgetInstance) -> Void) {
         let pi = activeIndex
@@ -454,11 +731,17 @@ final class DockStore: ObservableObject {
                 set: { self.setConfig(id, key, $0) })
     }
 
-    func add(_ kind: WidgetKind) {
+    func add(_ kind: WidgetKind, size: Int? = nil, config: [String: String] = [:]) {
         guard kind.isAvailable else { return }
-        let w = WidgetInstance(kind)
+        let w = WidgetInstance(kind, size: size, config: config)
         profiles[activeIndex].widgets.append(w)
         editingWidgetID = w.id
+    }
+
+    func insert(_ widget: WidgetInstance, at index: Int) {
+        let profileIndex = activeIndex
+        profiles[profileIndex].widgets.insert(widget, at: min(max(index, 0), profiles[profileIndex].widgets.count))
+        editingWidgetID = widget.id
     }
 
     func remove(_ id: UUID) {
@@ -490,15 +773,40 @@ final class DockStore: ObservableObject {
 
     func addProfile(named name: String, copyCurrent: Bool) {
         let widgets: [WidgetInstance] = copyCurrent ? activeWidgets.map { w -> WidgetInstance in var c = w; c.id = UUID(); return c } : []
-        let p = DockProfile(name: name, widgets: widgets)
+        let p = DockProfile(name: name, widgets: widgets, theme: settings.theme)
         profiles.append(p)
-        activeProfileID = p.id
+        switchProfile(p.id)
+    }
+
+    func addProfile(_ preset: DockProfilePreset) {
+        let baseName = preset.title
+        var name = baseName
+        var suffix = 2
+        while profiles.contains(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
+            name = "\(baseName) \(suffix)"
+            suffix += 1
+        }
+        let profile = DockProfile(name: name, widgets: preset.widgets, theme: preset.theme)
+        profiles.append(profile)
+        switchProfile(profile.id)
+    }
+
+    func switchProfile(_ id: UUID) {
+        guard let targetIndex = profiles.firstIndex(where: { $0.id == id }), id != activeProfileID else { return }
+        if profiles.indices.contains(activeIndex) {
+            profiles[activeIndex].theme = settings.theme
+        }
+        activeProfileID = id
+        settings.theme = profiles[targetIndex].theme
     }
 
     func deleteProfile(_ id: UUID) {
         guard profiles.count > 1 else { return }
         profiles.removeAll { $0.id == id }
-        if !profiles.contains(where: { $0.id == activeProfileID }) { activeProfileID = profiles[0].id }
+        if !profiles.contains(where: { $0.id == activeProfileID }) {
+            activeProfileID = profiles[0].id
+            settings.theme = profiles[0].theme
+        }
     }
 
     // Layout metrics
@@ -513,16 +821,41 @@ final class DockStore: ObservableObject {
         CGFloat(units) * unit + CGFloat(units - 1) * gap
     }
 
-    var contentSize: CGSize {
+    var dockRowSize: CGSize {
         let ws = activeWidgets
         let units = ws.isEmpty ? [1] : ws.map(\.size)
         let widths = units.map { width(for: $0) }
         if vertical {
-            let h = CGFloat(units.count) * unit + CGFloat(units.count) * gap + grip + barPadding * 2
-            return CGSize(width: (widths.max() ?? unit) + barPadding * 2, height: h)
+            let h = CGFloat(units.count) * unit + CGFloat(units.count) * gap + grip
+            return CGSize(width: widths.max() ?? unit, height: h)
         }
-        let w = widths.reduce(0, +) + CGFloat(units.count) * gap + grip + barPadding * 2
-        return CGSize(width: w, height: unit + barPadding * 2)
+        let w = widths.reduce(0, +) + CGFloat(units.count) * gap + grip
+        return CGSize(width: w, height: unit)
+    }
+
+    var profileStripWidth: CGFloat {
+        let scale = unit / 64
+        let tabs = profiles.reduce(CGFloat.zero) { total, profile in
+            let textWidth = CGFloat(profile.name.count) * 6.2
+            let selectionMark: CGFloat = profile.id == activeProfileID ? 12 : 0
+            return total + min(120, max(50, textWidth + selectionMark + 18))
+        }
+        let gaps = CGFloat(profiles.count + 1) * 4
+        return (tabs + gaps + 24 + 6) * scale
+    }
+
+    var profileStripHeight: CGFloat { 28 * unit / 64 }
+
+    var profileHeaderWidth: CGFloat {
+        max(dockRowSize.width, profileStripWidth + gap + 172 * unit / 64)
+    }
+
+    var contentSize: CGSize {
+        let row = dockRowSize
+        let hasProfileStrip = !profiles.isEmpty
+        let width = (hasProfileStrip ? profileHeaderWidth : row.width) + barPadding * 2
+        let height = row.height + (hasProfileStrip ? profileStripHeight + gap : 0) + barPadding * 2
+        return CGSize(width: width, height: height)
     }
 }
 

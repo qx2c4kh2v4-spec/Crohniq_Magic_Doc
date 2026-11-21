@@ -4,36 +4,53 @@ import UniformTypeIdentifiers
 struct DockView: View {
     @ObservedObject private var store = DockStore.shared
     @ObservedObject private var themeState = ThemeState.shared
+    @ObservedObject private var workspaceManager = WorkspaceManager.shared
+    @ObservedObject private var languageSettings = AppLanguageSettings.shared
     @State private var dragging: UUID?
 
     var body: some View {
         let s = store.unit / 64
         let palette = themeState.palette
+        let visibleWidgets = store.widgets(for: workspaceManager.activeID)
         let barShape = RoundedRectangle(cornerRadius: store.corner + store.barPadding, style: .continuous)
         let layout = store.vertical
             ? AnyLayout(VStackLayout(alignment: store.settings.position == .right ? .trailing : .leading, spacing: store.gap))
             : AnyLayout(HStackLayout(spacing: store.gap))
-        layout {
-            DockGrip(vertical: store.vertical)
-                .frame(width: store.vertical ? store.unit : store.grip, height: store.vertical ? store.grip : store.unit)
-            if store.activeWidgets.isEmpty {
-                Button { AppDelegate.shared.openSettings(page: .gallery) } label: {
-                    Image(systemName: "plus").font(.system(size: 22 * s, weight: .semibold))
-                        .frame(width: store.unit, height: store.unit)
-                        .background(RoundedRectangle(cornerRadius: store.corner).fill(Theme.tile))
-                }.buttonStyle(.plain)
+        VStack(spacing: store.profiles.isEmpty ? 0 : store.gap) {
+            if !store.profiles.isEmpty {
+                HStack(spacing: store.gap) {
+                    ProfileSwitcher()
+                        .frame(width: store.profileStripWidth,
+                               height: store.profileStripHeight)
+                    Spacer(minLength: 0)
+                    AppIdentityBadge(scale: s)
+                }
+                .frame(width: store.contentSize.width - store.barPadding * 2,
+                       height: store.profileStripHeight)
             }
-            ForEach(store.activeWidgets) { w in
-                TileContainer(instance: w)
-                    .frame(width: store.width(for: w.size), height: store.unit)
-                    .opacity(dragging == w.id ? 0.4 : 1)
-                    .onDrag {
-                        dragging = w.id
-                        return NSItemProvider(object: ("crohniq-dock-widget:" + w.id.uuidString) as NSString)
-                    }
-                    .onDrop(of: [.text], delegate: ReorderDrop(target: w.id, dragging: $dragging))
+            layout {
+                DockGrip(vertical: store.vertical)
+                    .frame(width: store.vertical ? store.unit : store.grip, height: store.vertical ? store.grip : store.unit)
+                if visibleWidgets.isEmpty {
+                    Button { AppDelegate.shared.openSettings(page: .gallery) } label: {
+                        Image(systemName: "plus").font(.system(size: 22 * s, weight: .semibold))
+                            .frame(width: store.unit, height: store.unit)
+                            .background(RoundedRectangle(cornerRadius: store.corner).fill(Theme.tile))
+                    }.buttonStyle(.plain)
+                }
+                ForEach(visibleWidgets) { w in
+                    TileContainer(instance: w)
+                        .frame(width: store.width(for: w.size), height: store.unit)
+                        .opacity(dragging == w.id ? 0.4 : 1)
+                        .onDrag {
+                            dragging = w.id
+                            return NSItemProvider(object: ("crohniq-dock-widget:" + w.id.uuidString) as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: ReorderDrop(target: w.id, dragging: $dragging))
+                }
             }
         }
+        .onDrop(of: [.text], isTargeted: nil) { addCatalogWidget(from: $0) }
         .padding(store.barPadding)
         .contentShape(barShape)
         .contextMenu { BarMenu() }
@@ -41,8 +58,45 @@ struct DockView: View {
         .id(palette.key + (Theme.glass ? "g" : "") + (store.settings.showBar ? "b" : ""))
         .frame(width: store.contentSize.width, height: store.contentSize.height)
         .environment(\.colorScheme, palette.dark ? .dark : .light)
+        .environment(\.locale, languageSettings.locale)
         .environment(\.dockScale, s)
+        .fontDesign(store.settings.fontDesign)
         .foregroundStyle(palette.fg)
+    }
+}
+
+struct AppIdentityBadge: View {
+    var scale: CGFloat = 1
+
+    private var buildInfo: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? "—"
+        let buildDate = Bundle.main.executableURL
+            .flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+            .map { DateFormatter.localizedString(from: $0, dateStyle: .short, timeStyle: .short) } ?? "—"
+        return "Build \(version) (\(build)) · \(buildDate)"
+    }
+
+    var body: some View {
+        HStack(spacing: 5 * scale) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
+                .resizable()
+                .frame(width: 18 * scale, height: 18 * scale)
+            VStack(alignment: .leading, spacing: 1 * scale) {
+                Text("Crohniq Dock")
+                    .font(.system(size: 9 * scale, weight: .semibold))
+                    .lineLimit(1)
+                Text(buildInfo)
+                    .font(.system(size: 7 * scale))
+                    .foregroundStyle(Theme.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 6 * scale)
+        .frame(width: 172 * scale, height: 26 * scale, alignment: .leading)
+        .background(Capsule().fill(.ultraThinMaterial))
+        .help("Crohniq Dock · \(buildInfo)")
     }
 }
 
@@ -81,7 +135,7 @@ struct BarMenu: View {
         Menu("Profil") {
             ForEach(store.profiles) { p in
                 Button {
-                    store.activeProfileID = p.id
+                    store.switchProfile(p.id)
                 } label: {
                     if p.id == store.activeProfileID { Label(p.name, systemImage: "checkmark") } else { Text(p.name) }
                 }
@@ -90,6 +144,71 @@ struct BarMenu: View {
         Toggle("Automatisch ausblenden", isOn: $store.settings.autoHide)
         Divider()
         Button("Leiste ausblenden (⌥⌘D)") { AppDelegate.shared.dock.hide() }
+    }
+}
+
+private struct ProfileSwitcher: View {
+    @ObservedObject private var store = DockStore.shared
+    @Environment(\.dockScale) private var s
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 4 * s) {
+                ForEach(store.profiles) { profile in
+                    Button {
+                        store.switchProfile(profile.id)
+                    } label: {
+                        HStack(spacing: 4 * s) {
+                            if profile.id == store.activeProfileID {
+                                Image(systemName: "checkmark")
+                            }
+                            Text(profile.name).lineLimit(1)
+                        }
+                        .font(.system(size: 10 * s, weight: .semibold))
+                        .foregroundStyle(profile.id == store.activeProfileID ? Theme.fg : Theme.secondary)
+                        .padding(.horizontal, 9 * s)
+                        .frame(height: 22 * s)
+                        .background {
+                            if profile.id == store.activeProfileID {
+                                Capsule().fill(Theme.tileHi.opacity(0.82))
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Profil „\(profile.name)“")
+                }
+                Button {
+                    var name = "Profil \(store.profiles.count + 1)"
+                    var suffix = 2
+                    while store.profiles.contains(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
+                        name = "Profil \(store.profiles.count + suffix)"
+                        suffix += 1
+                    }
+                    store.addProfile(named: name, copyCurrent: true)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10 * s, weight: .semibold))
+                        .foregroundStyle(Theme.secondary)
+                        .frame(width: 24 * s, height: 22 * s)
+                        .background(Capsule().fill(Theme.tileHi.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+                .help("Neues Profil anlegen und aktuelles Dock kopieren")
+                .accessibilityLabel("Neues Profil anlegen")
+            }
+            .padding(.horizontal, 3 * s)
+        }
+        .scrollIndicators(.hidden)
+        .frame(height: 28 * s)
+        .background {
+            if Theme.glass {
+                Capsule().fill(.clear)
+                    .glassEffect(.clear.tint(Theme.tile.opacity((store.settings.glassTint ?? 0.18) + 0.05)), in: Capsule())
+            } else {
+                Capsule().fill(Theme.bar.opacity(store.settings.barOpacity))
+            }
+        }
+        .clipShape(Capsule())
     }
 }
 
@@ -122,19 +241,39 @@ private struct ReorderDrop: DropDelegate {
     let target: UUID
     @Binding var dragging: UUID?
 
-    func validateDrop(info: DropInfo) -> Bool { dragging != nil }
+    func validateDrop(info: DropInfo) -> Bool {
+        dragging != nil || info.hasItemsConforming(to: [.text])
+    }
 
     func dropEntered(info: DropInfo) {
         guard let d = dragging, d != target else { return }
         withAnimation(.easeInOut(duration: 0.15)) { DockStore.shared.moveWidget(d, before: target) }
     }
 
-    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: dragging == nil ? .copy : .move)
+    }
 
     func performDrop(info: DropInfo) -> Bool {
+        guard dragging == nil else {
+            dragging = nil
+            return true
+        }
         dragging = nil
-        return true
+        return addCatalogWidget(from: info.itemProviders(for: [.text]))
     }
+}
+
+private func addCatalogWidget(from providers: [NSItemProvider]) -> Bool {
+    guard let provider = providers.first else { return false }
+    _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+        guard let payload = object as? String,
+              let item = WidgetCatalogItem.decodeDragPayload(payload) else { return }
+        DispatchQueue.main.async {
+            DockStore.shared.add(item.kind, size: item.size, config: item.config)
+        }
+    }
+    return true
 }
 
 // MARK: - Theme (Hell, Dunkel, Anthrazit, System, Eigene)
@@ -256,24 +395,40 @@ struct TileContainer: View {
                 }
             }
             .clipShape(shape)
-            .hoverUnroll(id: instance.id, width: instance.kind == .weather ? 380 : 300, enabled: hoverContent != nil) { hoverContent ?? AnyView(EmptyView()) }
+            .hoverUnroll(
+                id: instance.id,
+                width: instance.kind == .weather ? 380 : 300,
+                enabled: instance.cfg("unrollEnabled", "1") != "0" && hoverContent != nil
+            ) {
+                hoverContent ?? AnyView(EmptyView())
+            }
             .contentShape(RoundedRectangle(cornerRadius: store.corner, style: .continuous))
             .contextMenu { menu }
     }
 
     /// List that unrolls while hovering this tile.
     private var hoverContent: AnyView? {
+        let folder = (instance.cfg("unrollFolder") as NSString).expandingTildeInPath
+        if !folder.isEmpty {
+            let count = min(max(Int(instance.cfg("unrollCount", "10")) ?? 10, 1), 50)
+            return AnyView(FolderHoverList(folder: folder, count: count))
+        }
         switch instance.kind {
-        case .calendar: AnyView(CalendarHoverList())
-        case .reminders: AnyView(RemindersHoverList(list: instance.cfg("list")))
-        case .notes: AnyView(NotesHoverList())
-        case .mail: AnyView(MailHoverList())
-        case .clock: AnyView(ClockHoverList(w: instance))
-        case .weather: AnyView(WeatherHoverList(city: instance.cfg("city", "auto")))
-        case .nowPlaying: AnyView(MusicHoverList())
-        case .photos: AnyView(PhotosHoverList())
-        case .finder: AnyView(FinderHoverList())
-        default: nil
+        case .calendar: return AnyView(CalendarHoverList())
+        case .reminders: return AnyView(RemindersHoverList(list: instance.cfg("list")))
+        case .notes: return AnyView(NotesHoverList())
+        case .mail:
+            let fallback = instance.cfg("count", "10")
+            let count = min(max(Int(instance.cfg("unrollCount", fallback)) ?? 10, 1), 50)
+            return AnyView(MailHoverList(count: count, filter: instance.cfg("mailFilter", "all")))
+        case .clock: return AnyView(ClockHoverList(w: instance))
+        case .weather: return AnyView(WeatherHoverList(city: instance.cfg("city", "auto")))
+        case .nowPlaying: return AnyView(MusicHoverList())
+        case .photos: return AnyView(PhotosHoverList(count: min(max(Int(instance.cfg("count", "5")) ?? 5, 1), 12)))
+        case .shortcuts: return AnyView(ShortcutsHoverList(w: instance))
+        case .dropbox: return AnyView(DropboxHoverList(w: instance))
+        case .finder: return AnyView(FinderHoverList(w: instance))
+        default: return nil
         }
     }
 
@@ -322,15 +477,41 @@ struct TileContainer: View {
         case .stopwatch:
             Button("Stoppuhr zurücksetzen") { WidgetAction.post(id, "reset") }
             Divider()
+        case .timer:
+            Button("Timer zurücksetzen") { WidgetAction.post(id, "reset") }
+            Divider()
         case .voiceMemo:
             Button("Memo-Ordner öffnen") { NSWorkspace.shared.open(VoiceRecorder.folder) }
             Divider()
+        case .screenshots:
+            Button(ScreenRecordingController.shared.isRecording ? "Bildschirmvideo stoppen" : "Bildschirmvideo aufnehmen") {
+                if ScreenRecordingController.shared.isRecording {
+                    ScreenRecordingController.shared.stop()
+                } else {
+                    ScreenRecordingController.shared.start()
+                }
+            }
+            Divider()
         case .photos:
-            Button("Nächstes Bild") { WidgetAction.post(id, "next") }
             Button("Fotos öffnen") { WidgetAction.post(id, "reveal") }
+            Divider()
+        case .panoramas:
+            Button("Fotos aktualisieren") { PhotoLibrary.shared.refresh(force: true) }
+            Button("Fotos öffnen") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Photos.app"))
+            }
             Divider()
         case .finder:
             Button("Finder öffnen") { WidgetAction.post(id, "open") }
+            Divider()
+        case .dropbox:
+            Button("Dropbox-Ordner öffnen") { WidgetAction.post(id, "open") }
+            Divider()
+        case .shortcuts:
+            Button("Kurzbefehle öffnen") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Shortcuts.app"))
+            }
+            Button("Kurzbefehle neu laden") { ShortcutsCatalog.shared.refresh() }
             Divider()
         case .launcher:
             Button("Apps hinzufügen …") { WidgetAction.post(id, "pickApp") }
@@ -370,7 +551,7 @@ struct TileContainer: View {
             Divider()
         }
         widgetItems
-        Text(instance.kind.title)
+        Text(instance.displayName)
         if instance.kind.sizes.count > 1 {
             Menu("Grösse") {
                 ForEach(instance.kind.sizes, id: \.self) { size in
@@ -423,7 +604,11 @@ struct WidgetHost: View {
         case .fileShelf: FileShelfWidget(w: instance)
         case .downloads: DownloadsWidget(w: instance)
         case .search: SearchWidget(w: instance)
+        case .appleIntelligence: AppleIntelligenceWidget(w: instance)
+        case .shortcuts: ShortcutsWidget(w: instance)
         case .pomodoro: PomodoroWidget(w: instance)
+        case .timer: CountdownTimerWidget(w: instance)
+        case .focus: FocusWidget(w: instance)
         case .water: WaterWidget(w: instance)
         case .calendar: CalendarWidget(w: instance)
         case .reminders: RemindersWidget(w: instance)
@@ -440,10 +625,13 @@ struct WidgetHost: View {
         case .voiceMemo: VoiceMemoWidget(w: instance)
         case .emoji: EmojiWidget(w: instance)
         case .photos: PhotosWidget(w: instance)
+        case .panoramas: PanoramasWidget(w: instance)
         case .finder: FinderWidget(w: instance)
+        case .dropbox: DropboxWidget(w: instance)
         case .colorPicker: ColorPickerWidget(w: instance)
         case .converter: ConverterWidget(w: instance)
         case .github: GitHubWidget(w: instance)
+        case .developerUsage: DeveloperUsageWidget(w: instance)
         case .metric: MetricWidget(w: instance)
         case .nexus: NexusWidget(w: instance)
         case .workspaces: WorkspacesWidget(w: instance)

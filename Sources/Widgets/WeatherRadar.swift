@@ -177,7 +177,7 @@ struct WeatherHoverList: View {
                 HStack(spacing: 0) {
                     ForEach(d.days.prefix(5)) { day in
                         VStack(spacing: 3) {
-                            Text(day.date.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "de_CH"))))
+                            Text(day.date.formatted(.dateTime.weekday(.abbreviated).locale(AppLanguageSettings.shared.locale)))
                                 .font(.caption2.weight(.semibold)).foregroundStyle(Theme.secondary)
                             Image(systemName: WeatherService.symbol(day.code)).symbolRenderingMode(.multicolor)
                             Text("\(Int(day.max.rounded()))° / \(Int(day.min.rounded()))°").font(.caption2)

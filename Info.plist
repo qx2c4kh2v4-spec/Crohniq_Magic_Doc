@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Crohniq Dock steuert Musik, Spotify, Mail, Notizen, Kalender und Systemeinstellungen für die Widgets.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Das Mail-Widget gleicht Absender mit deinen Kontakten ab, wenn „Bekannte Absender“ ausgewählt ist.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Das Kalender-Widget zeigt deine nächsten Termine.</string>
 	<key>NSLocationUsageDescription</key>

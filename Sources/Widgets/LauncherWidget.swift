@@ -3,10 +3,61 @@ import UniformTypeIdentifiers
 
 /// Opens apps, optionally with documents, and reads the app's recent documents list.
 enum AppLauncher {
-    static func open(app: String, files: [String] = []) {
+    static func isSafari(_ app: String) -> Bool {
+        Bundle(path: app)?.bundleIdentifier == "com.apple.Safari"
+            || URL(fileURLWithPath: app).deletingPathExtension().lastPathComponent.caseInsensitiveCompare("Safari") == .orderedSame
+    }
+
+    static func promptSafariSearch(app: String) {
+        let alert = NSAlert()
+        alert.messageText = "Google-Suche in Safari"
+        alert.informativeText = "Suchbegriff eingeben oder Safari ohne Suche öffnen."
+        alert.addButton(withTitle: "Google suchen")
+        alert.addButton(withTitle: "Nur Safari öffnen")
+        alert.addButton(withTitle: "Abbrechen")
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        alert.accessoryView = field
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.initialFirstResponder = field
+
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
+        let query = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard response == .alertFirstButtonReturn, !query.isEmpty else {
+            open(app: app)
+            return
+        }
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "www.google.com"
+        components.path = "/search"
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        guard let url = components.url else {
+            Notifier.notify("Google-Suche fehlgeschlagen", "Der Suchbegriff konnte nicht in eine URL umgewandelt werden.")
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open([url], withApplicationAt: URL(fileURLWithPath: app), configuration: configuration) { _, error in
+            if let error { Notifier.notify("Safari konnte die Suche nicht öffnen", error.localizedDescription) }
+        }
+    }
+
+    static func isForkLift(_ app: String) -> Bool {
+        let bundleID = Bundle(path: app)?.bundleIdentifier?.lowercased()
+        let name = URL(fileURLWithPath: app).deletingPathExtension().lastPathComponent.lowercased()
+        return bundleID == "com.binarynights.forklift" || name.contains("forklift")
+    }
+
+    private static let xcodeProjectExtensions: Set<String> = ["xcodeproj", "xcworkspace", "playground"]
+
+    static func open(app: String, files: [String] = [], newInstance: Bool = false) {
         let appURL = URL(fileURLWithPath: app)
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.activates = true
+        cfg.createsNewApplicationInstance = newInstance
         let urls = files.map { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
         if urls.isEmpty {
             NSWorkspace.shared.openApplication(at: appURL, configuration: cfg)
@@ -39,7 +90,8 @@ enum AppLauncher {
             guard let bm = item["Bookmark"] as? Data else { continue }
             var stale = false
             if let url = try? URL(resolvingBookmarkData: bm, options: [.withoutUI, .withoutMounting], bookmarkDataIsStale: &stale),
-               FileManager.default.fileExists(atPath: url.path), !result.contains(url) {
+               FileManager.default.fileExists(atPath: url.path), !result.contains(url),
+               bundleID != "com.apple.dt.Xcode" || xcodeProjectExtensions.contains(url.pathExtension.lowercased()) {
                 result.append(url)
                 if result.count >= limit { break }
             }
@@ -69,12 +121,29 @@ extension WidgetInstance {
         }
         return []
     }
+
+    func fileCount(for app: String) -> Int {
+        let fallback = min(max(Int(cfg("fileCount", "10")) ?? 10, 1), 50)
+        return min(max(Int(config["fileCount|" + app] ?? "") ?? fallback, 1), 50)
+    }
 }
 
 enum LauncherStore {
     static func setApps(_ id: UUID, _ apps: [String]) {
         var seen = Set<String>()
         DockStore.shared.setConfig(id, "apps", apps.filter { seen.insert($0).inserted }.joined(separator: "\n"))
+    }
+
+    static func insertApp(_ id: UUID, _ path: String, before target: String) {
+        guard path != target, let apps = DockStore.shared.instance(id)?.launcherApps else { return }
+        insertApp(id, path, at: apps.firstIndex(of: target) ?? apps.count)
+    }
+
+    static func insertApp(_ id: UUID, _ path: String, at index: Int) {
+        guard var apps = DockStore.shared.instance(id)?.launcherApps else { return }
+        apps.removeAll { $0 == path }
+        apps.insert(path, at: min(max(index, 0), apps.count))
+        setApps(id, apps)
     }
 
     static func setPinned(_ id: UUID, app: String, _ files: [String]) {
@@ -104,7 +173,7 @@ struct LauncherWidget: View {
 
     var body: some View {
         let list = apps
-        let capacity = w.size == 1 ? 4 : w.size * 2
+        let capacity = w.size == 1 ? 4 : (w.size == 2 ? 2 : 3)
         let shown = Array(list.prefix(capacity))
         Group {
             if list.isEmpty {
@@ -123,12 +192,14 @@ struct LauncherWidget: View {
                     GridRow { slot(shown[safe: 2], icon: 22); slot(shown[safe: 3], icon: 22) }
                 }
             } else {
-                HStack(spacing: 6 * s) {
-                    ForEach(shown, id: \.self) { app in slot(app, icon: w.size == 1 ? 44 : 38) }
-                    if w.size > 1 && list.count < capacity {
+                HStack(spacing: 4 * s) {
+                    ForEach(shown, id: \.self) { app in
+                        slot(app, icon: w.size == 1 ? 44 : (w.size == 2 ? 34 : 38))
+                    }
+                    if w.size > 1 {
                         Button { LauncherStore.pickApps(w) } label: {
                             Image(systemName: "plus").font(.system(size: 12 * s, weight: .bold))
-                                .frame(width: 26 * s, height: 26 * s)
+                                .frame(width: 24 * s, height: 24 * s)
                                 .background(Circle().fill(Theme.tileHi))
                         }
                         .buttonStyle(.plain)
@@ -139,17 +210,12 @@ struct LauncherWidget: View {
         }
         .padding(6 * s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .contentShape(Rectangle())
         .overlay { if targeted { RoundedRectangle(cornerRadius: 14 * s).strokeBorder(Color.accentColor, lineWidth: 2) } }
-        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
-            for p in providers {
-                _ = p.loadObject(ofClass: URL.self) { url, _ in
-                    guard let url, url.pathExtension == "app" else { return }
-                    DispatchQueue.main.async { LauncherStore.setApps(w.id, w.launcherApps + [url.path]) }
-                }
-            }
-            return true
-        }
+        .onDrop(of: [.fileURL], delegate: LauncherAppDropDelegate(
+            id: w.id, apps: list, capacity: capacity, size: w.size, scale: s, targeted: $targeted
+        ))
         .onWidgetAction(w.id) { a in
             if a == "pickApp" { LauncherStore.pickApps(w) }
             else if a.hasPrefix("list:") { picker = AppChoice(path: String(a.dropFirst(5))) }
@@ -168,6 +234,57 @@ struct LauncherWidget: View {
     }
 }
 
+private struct LauncherAppDropDelegate: DropDelegate {
+    let id: UUID
+    let apps: [String]
+    let capacity: Int
+    let size: Int
+    let scale: CGFloat
+    @Binding var targeted: Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.fileURL])
+    }
+
+    func dropEntered(info: DropInfo) { targeted = true }
+    func dropExited(info: DropInfo) { targeted = false }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .copy) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let providers = info.itemProviders(for: [.fileURL])
+        guard !providers.isEmpty else { return false }
+        let index = insertionIndex(at: info.location)
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url, url.isFileURL, url.pathExtension.lowercased() == "app" else { return }
+                DispatchQueue.main.async {
+                    LauncherStore.insertApp(id, url.standardizedFileURL.path, at: index)
+                }
+            }
+        }
+        targeted = false
+        return true
+    }
+
+    private func insertionIndex(at location: CGPoint) -> Int {
+        guard !apps.isEmpty else { return 0 }
+        let width = DockStore.shared.width(for: size)
+        let height = DockStore.shared.unit
+        let slot: Int
+        if size == 1 && apps.count > 1 {
+            let column = location.x >= width / 2 ? 1 : 0
+            let row = location.y >= height / 2 ? 1 : 0
+            slot = row * 2 + column
+        } else {
+            let availableWidth = max(width - 12 * scale, 1)
+            let x = min(max(location.x - 6 * scale, 0), availableWidth)
+            slot = Int(x / availableWidth * CGFloat(capacity))
+        }
+        let lastVisibleSlot = apps.count >= capacity ? max(capacity - 1, 0) : apps.count
+        return min(max(slot, 0), lastVisibleSlot)
+    }
+}
+
 /// One app inside the launcher: click opens, hover unrolls its projects, files dropped on it are pinned to it.
 struct AppSlot: View {
     let w: WidgetInstance
@@ -175,8 +292,12 @@ struct AppSlot: View {
     let icon: CGFloat
     let showName: Bool
     @State private var targeted = false
+    @State private var showFiles = false
 
     private var name: String { FileManager.default.displayName(atPath: app).replacingOccurrences(of: ".app", with: "") }
+    private var opensFolder: Bool {
+        AppLauncher.isForkLift(app) && w.cfg("forkLiftMode", "app") == "folder"
+    }
 
     var body: some View {
         VStack(spacing: 1) {
@@ -187,13 +308,31 @@ struct AppSlot: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { AppLauncher.open(app: app) }
+        .onTapGesture {
+            if opensFolder {
+                HoverPanel.shared.close()
+                showFiles = true
+            }
+            else if AppLauncher.isSafari(app) { AppLauncher.promptSafariSearch(app: app) }
+            else { AppLauncher.open(app: app) }
+        }
+        .gesture(TapGesture().modifiers(.option).onEnded {
+            AppLauncher.open(app: app, newInstance: true)
+        })
+        .contextMenu {
+            Button("Neue Instanz öffnen") {
+                AppLauncher.open(app: app, newInstance: true)
+            }
+            Button("Im Finder zeigen") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app)])
+            }
+        }
         .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
             for p in providers {
                 _ = p.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
                     DispatchQueue.main.async {
-                        if url.pathExtension == "app" { LauncherStore.setApps(w.id, w.launcherApps + [url.path]) }
+                        if url.pathExtension.lowercased() == "app" { LauncherStore.insertApp(w.id, url.path, before: app) }
                         else { LauncherStore.setPinned(w.id, app: app, w.pinnedFiles(for: app) + [url.path]) }
                     }
                 }
@@ -201,6 +340,9 @@ struct AppSlot: View {
             return true
         }
         .hoverUnroll(key: w.id.uuidString + app, width: 360) { AnyView(LauncherHoverList(w: w, app: app)) }
+        .popover(isPresented: $showFiles, arrowEdge: .top) {
+            LauncherPicker(w: w, app: app) { showFiles = false }
+        }
     }
 }
 
@@ -212,9 +354,13 @@ struct LauncherPicker: View {
     @State private var recent: [URL] = []
     @State private var selection = Set<String>()
     @State private var filter = ""
+    @State private var directoryFiles: [URL] = []
 
     private var pinned: [String] { DockStore.shared.instance(w.id)?.pinnedFiles(for: app) ?? w.pinnedFiles(for: app) }
     private var name: String { FileManager.default.displayName(atPath: app).replacingOccurrences(of: ".app", with: "") }
+    private var limit: Int { w.fileCount(for: app) }
+    private var showsFolder: Bool { AppLauncher.isForkLift(app) && w.cfg("forkLiftMode", "app") == "folder" }
+    private var forkLiftFolder: String { (w.cfg("forkLiftFolder") as NSString).expandingTildeInPath }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -230,12 +376,24 @@ struct LauncherPicker: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    let pins = pinned.filter(matches)
-                    let recents = recent.map(\.path).filter { !pinned.contains($0) }.filter(matches)
-                    if !pins.isEmpty { title("Angeheftet"); ForEach(pins, id: \.self) { row($0, pinnedRow: true) } }
-                    if !recents.isEmpty { title("Zuletzt verwendet"); ForEach(recents, id: \.self) { row($0, pinnedRow: false) } }
-                    if pins.isEmpty && recents.isEmpty {
+                    if showsFolder {
+                        title("Verzeichnis: \(forkLiftFolder.isEmpty ? "nicht ausgewählt" : forkLiftFolder)")
+                        if forkLiftFolder.isEmpty {
+                            Text("Wähle in den Widget-Einstellungen ein Verzeichnis aus.").foregroundStyle(.secondary).padding(14)
+                        } else if directoryFiles.isEmpty {
+                            Text("Keine Dateien in diesem Verzeichnis.").foregroundStyle(.secondary).padding(14)
+                        }
+                        ForEach(directoryFiles.map(\.path).filter(matches).prefix(limit), id: \.self) { row($0, pinnedRow: false) }
+                    } else {
+                        let pins = pinned.filter(matches).prefix(limit)
+                        let recents = recent.map(\.path).filter { !pinned.contains($0) }.filter(matches)
+                        if !pins.isEmpty { title("Angeheftet"); ForEach(pins, id: \.self) { row($0, pinnedRow: true) } }
+                        if !recents.isEmpty { title("Zuletzt verwendet"); ForEach(recents.prefix(limit), id: \.self) { row($0, pinnedRow: false) } }
+                    }
+                    if (showsFolder && directoryFiles.isEmpty) || (!showsFolder && pinned.isEmpty && recent.isEmpty) {
+                        if !showsFolder {
                         Text("Keine Dateien. Zieh Dateien auf das App-Symbol im Widget.").foregroundStyle(.secondary).padding(14)
+                        }
                     }
                 }
                 .padding(.vertical, 6)
@@ -255,10 +413,22 @@ struct LauncherPicker: View {
         }
         .frame(width: 640)
         .onAppear {
-            guard let bid = Bundle(path: app)?.bundleIdentifier else { return }
             DispatchQueue.global(qos: .userInitiated).async {
-                let r = AppLauncher.recentDocuments(bundleID: bid, limit: 40)
-                DispatchQueue.main.async { recent = r }
+                let r = Bundle(path: app).map { AppLauncher.recentDocuments(bundleID: $0.bundleIdentifier ?? "", limit: limit) } ?? []
+                let files: [URL]
+                if showsFolder, !forkLiftFolder.isEmpty {
+                    files = (try? FileManager.default.contentsOfDirectory(
+                        at: URL(fileURLWithPath: forkLiftFolder, isDirectory: true),
+                        includingPropertiesForKeys: [.isDirectoryKey],
+                        options: [.skipsHiddenFiles]
+                    ))?.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending } ?? []
+                } else {
+                    files = []
+                }
+                DispatchQueue.main.async {
+                    recent = r
+                    directoryFiles = files
+                }
             }
         }
     }

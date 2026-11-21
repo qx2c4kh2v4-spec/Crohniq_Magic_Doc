@@ -28,43 +28,8 @@ struct AddPanel: View {
 // MARK: - Widgets tab
 
 struct CompactGallery: View {
-    @ObservedObject private var store = DockStore.shared
-    @State private var added: WidgetKind?
-
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(WidgetCategory.allCases) { cat in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(cat.headline).font(.headline)
-                        FlowLayout(spacing: 8) {
-                            ForEach(WidgetKind.available.filter { $0.category == cat }) { kind in
-                                VStack(spacing: 3) {
-                                    PreviewTile(kind: kind) { add(kind) }
-                                    Text(kind.title).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(14)
-        }
-        .overlay(alignment: .bottom) {
-            if let k = added {
-                Label("„\(k.title)“ hinzugefügt", systemImage: "checkmark.circle.fill")
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(Capsule().fill(.regularMaterial))
-                    .padding(.bottom, 10)
-                    .transition(.opacity)
-            }
-        }
-    }
-
-    private func add(_ kind: WidgetKind) {
-        store.add(kind)
-        withAnimation { added = kind }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation { if added == kind { added = nil } } }
+        WidgetCatalogBrowser(compact: true)
     }
 }
 
@@ -177,7 +142,7 @@ struct ProgramBrowser: View {
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { add(app) }
                     .onTapGesture { selection = app.path }
-                    .onDrag { NSItemProvider(contentsOf: URL(fileURLWithPath: app.path)) ?? NSItemProvider() }
+                    .onDrag { NSItemProvider(object: URL(fileURLWithPath: app.path) as NSURL) }
                     .contextMenu { menu(app) }
                 }
             }
@@ -196,7 +161,7 @@ struct ProgramBrowser: View {
             }
             .tag(app.path)
             .onTapGesture(count: 2) { add(app) }
-            .onDrag { NSItemProvider(contentsOf: URL(fileURLWithPath: app.path)) ?? NSItemProvider() }
+            .onDrag { NSItemProvider(object: URL(fileURLWithPath: app.path) as NSURL) }
             .contextMenu { menu(app) }
         }
         .listStyle(.inset(alternatesRowBackgrounds: true))
@@ -213,11 +178,12 @@ struct ProgramBrowser: View {
 
     @ViewBuilder private func menu(_ app: InstalledApps.App) -> some View {
         Button("Öffnen") { AppLauncher.open(app: app.path) }
+        Button("Neue Instanz öffnen") { AppLauncher.open(app: app.path, newInstance: true) }
         Button("Im Finder zeigen") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)]) }
         Divider()
-        let launchers = store.activeWidgets.filter { $0.kind == .launcher }
+        let launchers = store.allActiveWidgets.filter { $0.kind == .launcher }
         ForEach(launchers) { l in
-            Button("Zu App-Starter (\(l.launcherApps.count) Apps) hinzufügen") { addTo(l, app) }
+            Button("Zu „\(l.displayName)“ hinzufügen") { addTo(l, app) }
         }
         Button("Als neuen App-Starter hinzufügen") { addNew(app) }
     }
@@ -232,7 +198,7 @@ struct ProgramBrowser: View {
     }
 
     private func addNew(_ app: InstalledApps.App) {
-        let w = WidgetInstance(.launcher, size: 1, config: ["apps": app.path])
+        let w = WidgetInstance(.launcher, size: 1, config: ["apps": app.path, "widgetName": app.name])
         store.profiles[store.activeIndex].widgets.append(w)
         store.editingWidgetID = w.id
         flash("„\(app.name)“ in die Leiste gelegt")

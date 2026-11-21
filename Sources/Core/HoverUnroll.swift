@@ -17,7 +17,9 @@ final class HoverPanel {
     private(set) var ownerID: String?
     private var anchor: NSRect = .zero
     private var pending: DispatchWorkItem?
+    private var pendingOwnerID: String?
     private var watch: Timer?
+    private var rightClickMonitor: Any?
 
     var isVisible: Bool { panel.isVisible }
     var frame: NSRect { panel.frame }
@@ -34,16 +36,40 @@ final class HoverPanel {
 
     /// Called when the pointer enters a tile that has hover content.
     func enter(owner: String, anchor: NSRect, width: CGFloat, content: @escaping () -> AnyView) {
-        guard DockStore.shared.settings.hoverLists ?? true else { return }
+        guard DockStore.shared.settings.hoverLists ?? true, widgetAllowsUnroll(owner: owner) else { return }
         pending?.cancel()
         if ownerID == owner && isVisible { return }
-        let work = DispatchWorkItem { [weak self] in self?.show(owner: owner, anchor: anchor, width: width, content: content()) }
+        pendingOwnerID = owner
+        let work = DispatchWorkItem { [weak self] in
+            self?.pendingOwnerID = nil
+            self?.show(owner: owner, anchor: anchor, width: width, content: content())
+        }
         pending = work
         DispatchQueue.main.asyncAfter(deadline: .now() + (isVisible ? 0.05 : 0.35), execute: work)
     }
 
     func leave(owner: String) {
-        if ownerID != owner { pending?.cancel() }
+        if pendingOwnerID == owner {
+            pending?.cancel()
+            pendingOwnerID = nil
+        }
+    }
+
+    func close(ownerPrefix: String) {
+        if let pendingOwnerID, pendingOwnerID == ownerPrefix || pendingOwnerID.hasPrefix(ownerPrefix) {
+            pending?.cancel()
+            self.pendingOwnerID = nil
+        }
+        if let ownerID, ownerID == ownerPrefix || ownerID.hasPrefix(ownerPrefix) {
+            closeImmediately()
+        }
+    }
+
+    private func widgetAllowsUnroll(owner: String) -> Bool {
+        guard owner.count >= 36,
+              let widgetID = UUID(uuidString: String(owner.prefix(36))),
+              let widget = DockStore.shared.instance(widgetID) else { return true }
+        return widget.cfg("unrollEnabled", "1") != "0"
     }
 
     private func show(owner: String, anchor: NSRect, width: CGFloat, content: AnyView) {
@@ -85,6 +111,11 @@ final class HoverPanel {
 
     private func startWatching() {
         watch?.invalidate()
+        if let rightClickMonitor { NSEvent.removeMonitor(rightClickMonitor) }
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            self?.closeImmediately()
+            return event
+        }
         var outsideSince: Date?
         watch = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -102,7 +133,13 @@ final class HoverPanel {
 
     func close() {
         watch?.invalidate()
+        watch = nil
+        if let rightClickMonitor {
+            NSEvent.removeMonitor(rightClickMonitor)
+            self.rightClickMonitor = nil
+        }
         pending?.cancel()
+        pendingOwnerID = nil
         withAnimation(.easeIn(duration: 0.22)) { model.open = false }
         let owner = ownerID
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -110,6 +147,20 @@ final class HoverPanel {
             self.panel.orderOut(nil)
             self.ownerID = nil
         }
+    }
+
+    private func closeImmediately() {
+        watch?.invalidate()
+        watch = nil
+        if let rightClickMonitor {
+            NSEvent.removeMonitor(rightClickMonitor)
+            self.rightClickMonitor = nil
+        }
+        pending?.cancel()
+        pendingOwnerID = nil
+        model.open = false
+        panel.orderOut(nil)
+        ownerID = nil
     }
 }
 
@@ -235,6 +286,9 @@ private struct HoverUnrollModifier: ViewModifier {
                 } else {
                     HoverPanel.shared.leave(owner: id)
                 }
+            }
+            .onChange(of: enabled) { _, isEnabled in
+                if !isEnabled { HoverPanel.shared.close(ownerPrefix: id) }
             }
     }
 }

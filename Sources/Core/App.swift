@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         _ = LocationService.shared
+        ShortcutsScheduler.shared.start()
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -164,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func selectProfile(_ sender: NSMenuItem) {
-        if let id = sender.representedObject as? UUID { DockStore.shared.activeProfileID = id }
+        if let id = sender.representedObject as? UUID { DockStore.shared.switchProfile(id) }
     }
 
     @objc private func toggleLogin() {
@@ -187,6 +188,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                              backing: .buffered, defer: false)
             w.title = "Crohniq Dock"
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.titlebarAppearsTransparent = true
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: SettingsView())
             w.center()

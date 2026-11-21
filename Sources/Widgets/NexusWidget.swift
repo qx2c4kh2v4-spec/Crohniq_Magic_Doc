@@ -59,7 +59,7 @@ final class NexusAI: ObservableObject {
     }
 
     private func makeSession() -> LanguageModelSession {
-        let today = Date().formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "de_CH")))
+        let today = Date().formatted(.dateTime.day().month(.wide).year().locale(AppLanguageSettings.shared.locale))
         return LanguageModelSession(instructions: """
         Du bist der Assistent in der Widget-Leiste „Crohniq Dock“. Heute ist der \(today).
         Der Nutzer verwaltet mit der App „Nexus IQ“ seine Dokumente, E-Mails, Belege und Bilder.

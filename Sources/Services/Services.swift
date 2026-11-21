@@ -368,7 +368,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     func placeName(for loc: CLLocation) async -> String? {
         let key = String(format: "%.2f,%.2f", loc.coordinate.latitude, loc.coordinate.longitude)
         if let n = names[key] ?? UserDefaults.standard.string(forKey: "location.name.\(key)") { return n }
-        let marks = try? await CLGeocoder().reverseGeocodeLocation(loc, preferredLocale: Locale(identifier: "de_CH"))
+        let marks = try? await CLGeocoder().reverseGeocodeLocation(loc, preferredLocale: AppLanguageSettings.shared.locale)
         let n = marks?.first.flatMap { $0.locality ?? $0.subAdministrativeArea ?? $0.name }
         if let n { names[key] = n; UserDefaults.standard.set(n, forKey: "location.name.\(key)") }
         return n

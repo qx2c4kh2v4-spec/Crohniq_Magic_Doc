@@ -1,4 +1,7 @@
 import CoreWLAN
+import Combine
+import CoreMedia
+import ScreenCaptureKit
 import Photos
 import SwiftUI
 
@@ -148,30 +151,19 @@ struct AudioWidget: View {
     @Environment(\.dockScale) private var s
 
     var body: some View {
-        if w.size == 1 {
-            VStack(spacing: 1 * s) {
-                Image(systemName: audio.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 16 * s))
-                VolumeSlider(value: Binding(get: { Double(audio.volume) }, set: { audio.setVolume(Float($0)) }))
-                    .frame(width: 16 * s, height: 28 * s)
-                Text("\(Int(audio.volume * 100))%").font(.system(size: 11 * s, weight: .semibold)).monospacedDigit()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .help("Vertikaler Regler: nach oben lauter, nach unten leiser · \(audio.deviceName)")
-            .onTapGesture(count: 2) { audio.setMuted(!audio.muted) }
-        } else {
-            HStack(spacing: 10 * s) {
+        VStack(spacing: 4 * s) {
+            HStack(spacing: 4 * s) {
                 Button { audio.setMuted(!audio.muted) } label: {
                     Image(systemName: audio.muted ? "speaker.slash.fill" : (audio.volume > 0.5 ? "speaker.wave.3.fill" : "speaker.wave.1.fill"))
                         .font(.system(size: 14 * s))
-                        .frame(width: 22 * s)
+                        .frame(width: 20 * s, height: 20 * s)
                 }
                 .buttonStyle(.plain)
-                VStack(alignment: .leading, spacing: 3 * s) {
+                .help("Stumm schalten")
+                if w.size > 1 {
                     Text(audio.deviceName).font(.system(size: 11 * s, weight: .medium)).lineLimit(1)
-                    VolumeSlider(value: Binding(get: { Double(audio.volume) }, set: { audio.setVolume(Float($0)) }))
-                        .frame(width: 16 * s, height: 38 * s)
                 }
+                Spacer(minLength: 0)
                 Text("\(Int(audio.volume * 100))%").font(.system(size: 11 * s, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(Theme.secondary)
                 if w.size >= 4 {
@@ -181,8 +173,14 @@ struct AudioWidget: View {
                     .help("Ausgabegerät wählen")
                 }
             }
-            .tilePadding(s)
+            VolumeSlider(value: Binding(get: { Double(audio.volume) }, set: { audio.setVolume(Float($0)) }))
+                .frame(maxWidth: .infinity)
+                .frame(height: 22 * s)
         }
+        .padding(.horizontal, min(6 * s, 8))
+        .padding(.vertical, 4 * s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .help("Lautstärke regeln · \(audio.deviceName)")
     }
 }
 
@@ -190,20 +188,9 @@ struct VolumeSlider: View {
     @Binding var value: Double
 
     var body: some View {
-        GeometryReader { g in
-            ZStack {
-                Capsule().fill(Theme.fg.opacity(0.15)).frame(width: 6 * min(1, g.size.width / 12))
-                Capsule().fill(Theme.fg)
-                    .frame(width: 6 * min(1, g.size.width / 12), height: g.size.height * value)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                Circle().fill(Theme.fg).frame(width: 12, height: 12)
-                    .position(x: g.size.width / 2, y: g.size.height * (1 - value))
-            }
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { v in
-                value = max(0, min(1, 1 - v.location.y / g.size.height))
-            })
-        }
+        Slider(value: $value, in: 0...1)
+            .tint(.accentColor)
+            .accessibilityLabel("Lautstärke")
     }
 }
 
@@ -261,40 +248,193 @@ struct ClipboardWidget: View {
 
 // MARK: - Screenshots
 
+@MainActor
+final class ScreenRecordingController: ObservableObject {
+    static let shared = ScreenRecordingController()
+
+    @Published private(set) var isStarting = false
+    @Published private(set) var isRecording = false
+    @Published private(set) var isStopping = false
+    @Published private(set) var error: String?
+
+    private var stream: SCStream?
+    private var recordingOutput: SCRecordingOutput?
+    private var outputDelegate: ScreenRecordingOutputDelegate?
+
+    func start() {
+        guard !isStarting, !isRecording, !isStopping else { return }
+        isStarting = true
+        error = nil
+
+        Task {
+            do {
+                let content = try await SCShareableContent.current
+                guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() })
+                    ?? content.displays.first
+                else {
+                    throw NSError(domain: "ScreenRecording", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: "Kein Bildschirm zur Aufnahme gefunden."])
+                }
+
+                let filter = SCContentFilter(display: display, excludingWindows: [])
+                let configuration = SCStreamConfiguration()
+                let scale = CGFloat(filter.pointPixelScale)
+                configuration.width = max(1, Int((CGFloat(display.width) * scale).rounded()))
+                configuration.height = max(1, Int((CGFloat(display.height) * scale).rounded()))
+                configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+                configuration.queueDepth = 5
+                configuration.capturesAudio = true
+
+                let outputURL = Self.makeOutputURL()
+                let outputConfiguration = SCRecordingOutputConfiguration()
+                outputConfiguration.outputURL = outputURL
+                let delegate = ScreenRecordingOutputDelegate()
+                let controller = self
+                delegate.onStarted = { [weak controller] in
+                    controller?.isStarting = false
+                    controller?.isRecording = true
+                }
+                delegate.onFinished = { [weak controller] in
+                    controller?.finishRecording()
+                }
+                delegate.onError = { [weak controller] error in
+                    controller?.handleRecordingError(error)
+                }
+
+                let output = SCRecordingOutput(configuration: outputConfiguration, delegate: delegate)
+                let stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
+                self.stream = stream
+                self.recordingOutput = output
+                self.outputDelegate = delegate
+
+                try stream.addRecordingOutput(output)
+                try await stream.startCapture()
+            } catch {
+                isStarting = false
+                isRecording = false
+                self.error = "Aufnahme fehlgeschlagen: \(error.localizedDescription). Prüfe ggf. die Bildschirmaufnahme-Berechtigung in den Systemeinstellungen."
+                clearRecordingReferences()
+            }
+        }
+    }
+
+    func stop() {
+        guard let stream, !isStopping else { return }
+        isStopping = true
+        Task {
+            do {
+                try await stream.stopCapture()
+            } catch {
+                self.error = "Aufnahme konnte nicht beendet werden: \(error.localizedDescription)"
+                isStopping = false
+            }
+        }
+    }
+
+    private func handleRecordingError(_ error: Error) {
+        self.error = "Videoaufnahme fehlgeschlagen: \(error.localizedDescription)"
+        guard let stream else {
+            clearRecordingReferences()
+            return
+        }
+        isStopping = true
+        Task {
+            do {
+                try await stream.stopCapture()
+                clearRecordingReferences()
+            } catch {
+                self.error = "\(self.error ?? "Aufnahmefehler") \(error.localizedDescription)"
+                isStopping = false
+            }
+        }
+    }
+
+    private func finishRecording() {
+        isStarting = false
+        isRecording = false
+        isStopping = false
+        clearRecordingReferences()
+    }
+
+    private func clearRecordingReferences() {
+        stream = nil
+        recordingOutput = nil
+        outputDelegate = nil
+        isStarting = false
+        isRecording = false
+        isStopping = false
+    }
+
+    private static func makeOutputURL() -> URL {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd 'um' HH.mm.ss"
+        let desktop = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Desktop", isDirectory: true)
+        let stem = "Bildschirmvideo \(formatter.string(from: Date()))"
+        var url = desktop.appendingPathComponent("\(stem).mp4")
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = desktop.appendingPathComponent("\(stem) \(suffix).mp4")
+            suffix += 1
+        }
+        return url
+    }
+}
+
+private final class ScreenRecordingOutputDelegate: NSObject, SCRecordingOutputDelegate {
+    var onStarted: (() -> Void)?
+    var onFinished: (() -> Void)?
+    var onError: ((Error) -> Void)?
+
+    func recordingOutputDidStartRecording(_ recordingOutput: SCRecordingOutput) {
+        DispatchQueue.main.async { [weak self] in self?.onStarted?() }
+    }
+
+    func recordingOutput(_ recordingOutput: SCRecordingOutput, didFailWithError error: Error) {
+        DispatchQueue.main.async { [weak self] in self?.onError?(error) }
+    }
+
+    func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
+        DispatchQueue.main.async { [weak self] in self?.onFinished?() }
+    }
+}
+
 struct ScreenshotWidget: View {
     let w: WidgetInstance
     @Environment(\.dockScale) private var s
+    @ObservedObject private var recording = ScreenRecordingController.shared
     @State private var snapshots: [URL] = []
+    @State private var recordings: [URL] = []
     @State private var showingHistory = false
 
     var body: some View {
-        HStack(spacing: (w.size == 1 ? 8 : 4) * s) {
-            if w.size > 1 {
-                Button { showingHistory = true } label: {
-                    if let latest = snapshots.first, let image = NSImage(contentsOf: latest) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 28 * s, height: 28 * s)
-                            .clipShape(RoundedRectangle(cornerRadius: 5 * s))
-                    } else {
-                        Image(systemName: "photo.on.rectangle")
-                            .font(.system(size: 16 * s))
-                            .foregroundStyle(Theme.secondary)
-                            .frame(width: 28 * s, height: 28 * s)
-                    }
-                }
-                .buttonStyle(.plain)
-                .help("Letzte Bildschirmfotos anzeigen")
-                .popover(isPresented: $showingHistory) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("Letzte Bildschirmfotos").font(.headline).padding(10)
-                        Divider()
-                        if snapshots.isEmpty {
-                            Text("Noch keine Bildschirmfotos auf dem Schreibtisch.")
-                                .font(.callout).foregroundStyle(Theme.secondary)
-                                .padding(12)
+        VStack(alignment: .leading, spacing: 4 * s) {
+            HStack(spacing: (w.size == 1 ? 8 : 4) * s) {
+                if w.size > 1 {
+                    Button { showingHistory = true } label: {
+                        if let latest = snapshots.first, let image = NSImage(contentsOf: latest) {
+                            Image(nsImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 28 * s, height: 28 * s)
+                                .clipShape(RoundedRectangle(cornerRadius: 5 * s))
                         } else {
+                            Image(systemName: "photo.on.rectangle")
+                                .font(.system(size: 16 * s))
+                                .foregroundStyle(Theme.secondary)
+                                .frame(width: 28 * s, height: 28 * s)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Letzte Bildschirmfotos und -videos anzeigen")
+                    .popover(isPresented: $showingHistory) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Letzte Aufnahmen").font(.headline).padding(10)
+                            Divider()
+                            if snapshots.isEmpty && recordings.isEmpty {
+                                Text("Noch keine Aufnahmen auf dem Schreibtisch.")
+                                    .font(.callout).foregroundStyle(Theme.secondary)
+                                    .padding(12)
+                            }
                             ForEach(snapshots, id: \.self) { url in
                                 Button {
                                     NSWorkspace.shared.open(url)
@@ -318,28 +458,68 @@ struct ScreenshotWidget: View {
                                 }
                                 .buttonStyle(.plain)
                             }
+                            if !recordings.isEmpty {
+                                Divider().padding(.vertical, 4)
+                                Text("Bildschirmvideos").font(.subheadline.weight(.semibold)).padding(.horizontal, 10)
+                                ForEach(recordings, id: \.self) { url in
+                                    Button {
+                                        NSWorkspace.shared.open(url)
+                                        showingHistory = false
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "video.fill").foregroundStyle(.red)
+                                            Text(url.deletingPathExtension().lastPathComponent)
+                                                .lineLimit(1)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
+                        .frame(width: 300)
                     }
-                    .frame(width: 300)
                 }
-            }
-            CircleButton(symbol: "rectangle.dashed", size: w.size == 1 ? 36 : 24,
-                         fill: Color.blue.opacity(0.25), tint: .blue) { capture(["-i"]) }
-                .help("Bereich (⇧ = in Zwischenablage)")
-            if w.size >= 2 {
-                CircleButton(symbol: "macwindow", size: 24, fill: Color.green.opacity(0.22), tint: .green) { capture(["-iW"]) }
-                    .help("Fenster")
-                CircleButton(symbol: "display", size: 24, fill: Color.purple.opacity(0.25), tint: .purple) { capture([]) }
-                    .help("Ganzer Bildschirm")
+                CircleButton(symbol: "rectangle.dashed", size: w.size == 1 ? 36 : 24,
+                             fill: Color.blue.opacity(0.25), tint: .blue) { capture(["-i"]) }
+                    .help("Bereich (⇧ = in Zwischenablage)")
+                if w.size >= 2 {
+                    CircleButton(symbol: "macwindow", size: 24, fill: Color.green.opacity(0.22), tint: .green) { capture(["-iW"]) }
+                        .help("Fenster")
+                    CircleButton(symbol: "display", size: 24, fill: Color.purple.opacity(0.25), tint: .purple) { capture([]) }
+                        .help("Ganzer Bildschirm")
+                }
+                if w.size >= 3 {
+                    CircleButton(
+                        symbol: recording.isStarting ? "ellipsis.circle" : recording.isRecording ? "stop.circle.fill" : "record.circle",
+                        size: 28,
+                        fill: recording.isRecording ? Color.red.opacity(0.4) : Color.red.opacity(0.22),
+                        tint: .red
+                    ) {
+                        if recording.isRecording { recording.stop() } else { recording.start() }
+                    }
+                    .disabled(recording.isStarting || recording.isStopping)
+                    .help(recording.isRecording ? "Bildschirmvideo stoppen" : "Bildschirmvideo mit Systemton aufnehmen")
+                }
             }
             if w.size >= 3 {
-                CircleButton(symbol: "record.circle", size: 28, fill: Color.red.opacity(0.22), tint: .red) {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Screenshot.app"))
+                if let error = recording.error {
+                    Text(error).font(.system(size: 8 * s)).foregroundStyle(.orange).lineLimit(2).help(error)
+                } else if recording.isStarting {
+                    Text("Aufnahme wird gestartet …").font(.system(size: 8 * s)).foregroundStyle(Theme.secondary)
+                } else if recording.isRecording {
+                    Text(recording.isStopping ? "Aufnahme wird beendet …" : "Aufnahme läuft · Stopp zum Beenden")
+                        .font(.system(size: 8 * s)).foregroundStyle(.red)
                 }
-                .help("Bildschirmaufnahme")
             }
         }
         .tilePadding(s)
+        .onChange(of: recording.isRecording) { _, isRecording in
+            if !isRecording { refreshSnapshots() }
+        }
         .task {
             refreshSnapshots()
             while !Task.isCancelled {
@@ -364,11 +544,12 @@ struct ScreenshotWidget: View {
     private func refreshSnapshots() {
         let desktop = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Desktop")
         let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff"]
-        snapshots = ((try? FileManager.default.contentsOfDirectory(
+        let entries = (try? FileManager.default.contentsOfDirectory(
             at: desktop,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
-        )) ?? [])
+        )) ?? []
+        snapshots = entries
             .filter { url in
                 let name = url.lastPathComponent
                 return imageExtensions.contains(url.pathExtension.lowercased())
@@ -382,6 +563,21 @@ struct ScreenshotWidget: View {
                 return lhs > rhs
             }
             .prefix(8)
+            .map { $0 }
+        recordings = entries
+            .filter { url in
+                let name = url.lastPathComponent
+                return ["mov", "mp4"].contains(url.pathExtension.lowercased())
+                    && (name.localizedCaseInsensitiveContains("Bildschirmvideo")
+                        || name.localizedCaseInsensitiveContains("Bildschirmaufnahme")
+                        || name.localizedCaseInsensitiveContains("Screen Recording"))
+            }
+            .sorted {
+                let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhs > rhs
+            }
+            .prefix(5)
             .map { $0 }
     }
 }
@@ -457,12 +653,10 @@ struct PhotosWidget: View {
     let w: WidgetInstance
     @ObservedObject private var library = PhotoLibrary.shared
     @Environment(\.dockScale) private var s
-    @State private var offset = 0
 
     private var visibleAssets: [PHAsset] {
-        let count = min(w.size == 1 ? 1 : w.size * 2, library.assets.count)
-        guard count > 0 else { return [] }
-        return (0..<count).map { library.assets[(offset + $0) % library.assets.count] }
+        let count = min(max(Int(w.cfg("count", "5")) ?? 5, 1), 12)
+        return Array(library.assets.prefix(count))
     }
 
     var body: some View {
@@ -488,7 +682,7 @@ struct PhotosWidget: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 2 * s), count: min(w.size, visibleAssets.count)),
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 2 * s), count: min(3, visibleAssets.count)),
                     spacing: 2 * s
                 ) {
                     ForEach(visibleAssets, id: \.localIdentifier) { asset in
@@ -507,7 +701,6 @@ struct PhotosWidget: View {
         .contentShape(Rectangle())
         .onTapGesture { openPhotos() }
         .onWidgetAction(w.id) { a in
-            if a == "next", !library.assets.isEmpty { offset = (offset + 1) % library.assets.count }
             if a == "reveal" { openPhotos() }
         }
         .task {
@@ -521,10 +714,162 @@ struct PhotosWidget: View {
     }
 }
 
+private enum PanoramaSlide: Identifiable {
+    case photo(PHAsset)
+    case wallpaper(URL)
+
+    var id: String {
+        switch self {
+        case .photo(let asset): "photo:\(asset.localIdentifier)"
+        case .wallpaper(let url): "wallpaper:\(url.path)"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .photo: "Panorama"
+        case .wallpaper: "Apple-Hintergrund"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .photo: "pano.fill"
+        case .wallpaper: "apple.logo"
+        }
+    }
+}
+
+struct PanoramasWidget: View {
+    let w: WidgetInstance
+    @ObservedObject private var library = PhotoLibrary.shared
+    @State private var currentIndex = 0
+
+    private var slides: [PanoramaSlide] {
+        let count = min(max(w.cfgInt("count", 10), 1), 50)
+        let photos = library.panoramas
+        let wallpapers = library.appleWallpapers
+        var result: [PanoramaSlide] = []
+        var photoIndex = 0
+        var wallpaperIndex = 0
+
+        while result.count < count && (photoIndex < photos.count || wallpaperIndex < wallpapers.count) {
+            if photoIndex < photos.count {
+                result.append(.photo(photos[photoIndex]))
+                photoIndex += 1
+            }
+            if result.count < count && wallpaperIndex < wallpapers.count {
+                result.append(.wallpaper(wallpapers[wallpaperIndex]))
+                wallpaperIndex += 1
+            }
+        }
+        return result
+    }
+
+    private var timer: Publishers.Autoconnect<Timer.TimerPublisher> {
+        let interval = min(max(w.cfgInt("interval", 30), 5), 3600)
+        return Timer.publish(every: TimeInterval(interval), on: .main, in: .common).autoconnect()
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let visibleSlides = slides
+            let index = visibleSlides.isEmpty ? 0 : currentIndex % visibleSlides.count
+            ZStack(alignment: .bottomLeading) {
+                if visibleSlides.isEmpty {
+                    Rectangle()
+                        .fill(Theme.tileHi)
+                        .overlay {
+                            VStack(spacing: 4) {
+                                Image(systemName: "photo.badge.exclamationmark")
+                                    .font(.system(size: 18, weight: .medium))
+                                Text(library.authorization == .denied || library.authorization == .restricted
+                                     ? "Fotos-Zugriff erlauben" : "Keine Panorama-Fotos gefunden")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                            .foregroundStyle(Theme.secondary)
+                        }
+                } else {
+                    slideView(visibleSlides[index], size: geometry.size)
+                        .id(visibleSlides[index].id)
+                        .transition(.opacity)
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.65)],
+                        startPoint: .center,
+                        endPoint: .bottom
+                    )
+                    HStack(spacing: 5) {
+                        Image(systemName: visibleSlides[index].symbol)
+                        Text("\(visibleSlides[index].label) · \(index + 1)/\(visibleSlides.count)")
+                        Spacer(minLength: 0)
+                        if visibleSlides.count > 1 {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+                    }
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.bottom, 7)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if slides.isEmpty && (library.authorization == .denied || library.authorization == .restricted) {
+                    PhotoLibrary.openPrivacySettings()
+                } else {
+                    advance()
+                }
+            }
+            .animation(.easeInOut(duration: 0.8), value: currentIndex)
+        }
+        .task { library.refresh() }
+        .onReceive(timer) { _ in advance() }
+    }
+
+    @ViewBuilder
+    private func slideView(_ slide: PanoramaSlide, size: CGSize) -> some View {
+        switch slide {
+        case .photo(let asset):
+            PhotoThumbnail(asset: asset, targetSize: CGSize(width: size.width * 2, height: size.height * 2))
+        case .wallpaper(let url):
+            AppleWallpaperThumbnail(url: url)
+        }
+    }
+
+    private func advance() {
+        guard slides.count > 1 else { return }
+        currentIndex = (currentIndex + 1) % slides.count
+    }
+}
+
+private struct AppleWallpaperThumbnail: View {
+    let url: URL
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Rectangle().fill(Theme.tileHi)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .task(id: url) {
+            image = NSImage(contentsOf: url)
+        }
+    }
+}
+
 struct PhotosHoverList: View {
+    let count: Int
     @ObservedObject private var library = PhotoLibrary.shared
 
     private let columns = [GridItem(.adaptive(minimum: 84), spacing: 8)]
+    private var limit: Int { min(max(count, 1), 12) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -556,7 +901,7 @@ struct PhotosHoverList: View {
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(library.assets.prefix(18), id: \.localIdentifier) { asset in
+                        ForEach(library.assets.prefix(limit), id: \.localIdentifier) { asset in
                             PhotoHoverCell(asset: asset)
                         }
                     }

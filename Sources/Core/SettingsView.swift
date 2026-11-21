@@ -1,3 +1,4 @@
+import CoreGraphics
 import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
@@ -32,23 +33,66 @@ final class SettingsNav: ObservableObject {
 
 struct SettingsView: View {
     @ObservedObject private var nav = SettingsNav.shared
+    @ObservedObject private var store = DockStore.shared
+    @ObservedObject private var languageSettings = AppLanguageSettings.shared
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsPage.allCases, selection: Binding(get: { nav.page }, set: { if let p = $0 { nav.page = p } })) { p in
-                Label(p.title, systemImage: p.symbol).tag(p)
+        ZStack {
+            Rectangle().fill(.regularMaterial).ignoresSafeArea()
+            NavigationSplitView {
+                ZStack {
+                    let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    shape.fill(.clear)
+                        .glassEffect(
+                            .regular.tint(Theme.tile.opacity(0.25 + (DockStore.shared.settings.glassTint ?? 0.18) * 0.6)),
+                            in: shape
+                        )
+                        .padding(8)
+                    List(SettingsPage.allCases, selection: Binding(get: { nav.page }, set: { if let p = $0 { nav.page = p } })) { p in
+                        Label(p.title, systemImage: p.symbol).tag(p)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(.clear)
+                    .padding(.top, 12)
+                    .padding(.horizontal, 4)
+                }
+                .background(.clear)
+                .navigationSplitViewColumnWidth(180)
+            } detail: {
+                ZStack {
+                    let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    shape.fill(.clear)
+                        .glassEffect(
+                            .regular.tint(Theme.tile.opacity(0.25 + (DockStore.shared.settings.glassTint ?? 0.18) * 0.6)),
+                            in: shape
+                        )
+                        .padding(8)
+                    Group {
+                        switch nav.page {
+                        case .gallery: WidgetGalleryView()
+                        case .general: GeneralSettings()
+                        case .widgets: WidgetSettings()
+                        case .profiles: ProfileSettings()
+                        case .workspaces: WorkspaceSettings()
+                        }
+                    }
+                    .padding(8)
+                }
+                .background(.clear)
             }
-            .navigationSplitViewColumnWidth(180)
-        } detail: {
-            switch nav.page {
-            case .gallery: WidgetGalleryView()
-            case .general: GeneralSettings()
-            case .widgets: WidgetSettings()
-            case .profiles: ProfileSettings()
-            case .workspaces: WorkspaceSettings()
+            .background(.clear)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Spacer()
+                AppIdentityBadge()
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
         }
         .frame(minWidth: 980, minHeight: 640)
+        .environment(\.locale, languageSettings.locale)
+        .fontDesign(store.settings.fontDesign)
     }
 }
 
@@ -56,10 +100,24 @@ struct SettingsView: View {
 
 struct GeneralSettings: View {
     @ObservedObject private var store = DockStore.shared
+    @ObservedObject private var languageSettings = AppLanguageSettings.shared
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var screenCaptureAccess = CGPreflightScreenCaptureAccess()
 
     var body: some View {
         Form {
+            Section("Sprache") {
+                Picker("App-Sprache", selection: $languageSettings.language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.label).tag(language)
+                    }
+                }
+                Text(languageSettings.language == .system
+                     ? "Verwendet die bevorzugte Sprache deines Macs."
+                     : "Die ausgewählte Sprache wird sofort übernommen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Position") {
                 Picker("Ort", selection: $store.settings.position) {
                     ForEach(DockPosition.allCases) { Text($0.label).tag($0) }
@@ -92,9 +150,21 @@ struct GeneralSettings: View {
                 if (store.settings.theme ?? "dark") == "custom" {
                     CustomColorRow(title: "Leiste", hex: $store.settings.customBar, fallback: "#0F0F10")
                     CustomColorRow(title: "Kacheln", hex: $store.settings.customTile, fallback: "#212124")
-                    CustomColorRow(title: "Schrift", hex: $store.settings.customText, fallback: "#FFFFFF", allowAuto: true)
+                    CustomColorRow(title: "Schriftfarbe", hex: $store.settings.customText, fallback: "#FFFFFF", allowAuto: true)
                 }
                 ThemePreview()
+            }
+            Section("Schriftart") {
+                Picker("Schrift", selection: Binding(
+                    get: { store.settings.fontStyle ?? .system },
+                    set: { store.settings.fontStyle = $0 }
+                )) {
+                    ForEach(DockFontStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                Text("Beispiel: Crohniq Dock")
+                    .font(.system(size: 16, weight: .semibold))
             }
             Section("Grösse & Leiste") {
                 Slider(value: $store.settings.tileSize, in: 48...96, step: 2) {
@@ -121,10 +191,20 @@ struct GeneralSettings: View {
                               granted: WorkspaceManager.hasAccessibility) { WorkspaceManager.requestAccessibility() }
                 PermissionRow(title: "Festplattenvollzugriff", detail: "Safari-Lesezeichen und Browserverlauf lesen",
                               granted: !SafariBookmarks.shared.accessDenied) { SafariBookmarks.openFullDiskAccessSettings() }
+                PermissionRow(title: "Bildschirmaufnahme", detail: "Bildschirmvideos mit Systemton aufnehmen",
+                              granted: screenCaptureAccess) {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .navigationTitle("Allgemein")
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            screenCaptureAccess = CGPreflightScreenCaptureAccess()
+        }
     }
 }
 
@@ -211,8 +291,50 @@ struct PermissionRow: View {
 
 // MARK: - Widgets
 
+private struct ProgramToWidgetDropDelegate: DropDelegate {
+    let target: UUID
+    let store: DockStore
+    @Binding var highlightedRow: UUID?
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.fileURL])
+    }
+
+    func dropEntered(info: DropInfo) { highlightedRow = target }
+
+    func dropExited(info: DropInfo) {
+        if highlightedRow == target { highlightedRow = nil }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .copy) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let provider = info.itemProviders(for: [.fileURL]).first else { return false }
+        let insertAfter = info.location.y >= 16
+        provider.loadObject(ofClass: URL.self) { url, _ in
+            guard let url, url.isFileURL, url.pathExtension.lowercased() == "app" else {
+                DispatchQueue.main.async { highlightedRow = nil }
+                return
+            }
+            DispatchQueue.main.async {
+                guard let targetIndex = store.allActiveWidgets.firstIndex(where: { $0.id == target }) else {
+                    highlightedRow = nil
+                    return
+                }
+                let path = url.standardizedFileURL.path
+                let name = FileManager.default.displayName(atPath: path).replacingOccurrences(of: ".app", with: "")
+                let launcher = WidgetInstance(.launcher, size: 1, config: ["apps": path, "widgetName": name])
+                store.insert(launcher, at: targetIndex + (insertAfter ? 1 : 0))
+                highlightedRow = nil
+            }
+        }
+        return true
+    }
+}
+
 struct WidgetSettings: View {
     @ObservedObject private var store = DockStore.shared
+    @State private var highlightedDropRow: UUID?
 
     var body: some View {
         HSplitView {
@@ -226,24 +348,43 @@ struct WidgetSettings: View {
                 }
                 .padding(10)
                 List(selection: $store.editingWidgetID) {
-                    ForEach(store.activeWidgets) { w in
+                    ForEach(store.allActiveWidgets) { w in
                         HStack(spacing: 10) {
                             Image(systemName: w.kind.symbol)
                                 .font(.system(size: 13, weight: .semibold))
                                 .frame(width: 28, height: 28)
                                 .background(RoundedRectangle(cornerRadius: 7).fill(Color.accentColor.opacity(0.15)))
-                            Text(w.kind.title).font(.body.weight(.medium))
+                            Text(w.displayName).font(.body.weight(.medium))
                             Spacer()
                             Text(WidgetSize.name(w.size, in: w.kind.sizes)).font(.caption).foregroundStyle(.secondary)
                         }
+                        .contentShape(Rectangle())
+                        .overlay {
+                            if highlightedDropRow == w.id {
+                                RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accentColor, lineWidth: 1.5)
+                            }
+                        }
+                        .onDrop(of: [.fileURL], delegate: ProgramToWidgetDropDelegate(
+                            target: w.id, store: store, highlightedRow: $highlightedDropRow
+                        ))
                         .tag(w.id)
                         .contextMenu { Button("Entfernen", role: .destructive) { store.remove(w.id) } }
                     }
                     .onMove { store.move(fromOffsets: $0, toOffset: $1) }
-                    .onDelete { idx in idx.map { store.activeWidgets[$0].id }.forEach(store.remove) }
+                    .onDelete { idx in idx.map { store.allActiveWidgets[$0].id }.forEach(store.remove) }
                 }
+                .scrollContentBackground(.hidden)
+                .background(.clear)
             }
+            .padding(8)
             .frame(minWidth: 300, idealWidth: 340)
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+                Color.clear.glassEffect(
+                    .regular.tint(Theme.tile.opacity(0.25 + (store.settings.glassTint ?? 0.18) * 0.6)),
+                    in: shape
+                )
+            }
 
             VSplitView {
                 Group {
@@ -309,6 +450,7 @@ struct LauncherPreview: View {
 struct WidgetEditor: View {
     let w: WidgetInstance
     @ObservedObject private var store = DockStore.shared
+    @ObservedObject private var workspaceManager = WorkspaceManager.shared
 
     var body: some View {
         Form {
@@ -316,6 +458,69 @@ struct WidgetEditor: View {
                 ForEach(w.kind.sizes, id: \.self) { Text(WidgetSize.name($0, in: w.kind.sizes)).tag($0) }
             }
             .pickerStyle(.segmented)
+            if w.kind == .launcher {
+                TextField(
+                    "Widget-Name",
+                    text: Binding(
+                        get: { store.instance(w.id)?.config["widgetName"] ?? "" },
+                        set: { store.setConfig(w.id, "widgetName", $0) }
+                    ),
+                    prompt: Text(w.kind.title)
+                )
+            }
+            if !workspaceManager.workspaces.isEmpty {
+                Section("Arbeitsbereiche") {
+                    ForEach(workspaceManager.workspaces) { workspace in
+                        Toggle(workspace.name, isOn: workspaceBinding(workspace.id))
+                    }
+                    Text("Das Widget wird nur in ausgewählten Arbeitsbereichen angezeigt.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Section("Tora / Aufklappansicht") {
+                Toggle("Beim Überfahren anzeigen", isOn: unrollEnabledBinding)
+                fieldView(ConfigField(
+                    key: "unrollFolder",
+                    label: "Ordner für Dateien und Unterordner",
+                    kind: .directory,
+                    help: "Leer lassen, um die widgeteigene Aufklappansicht zu verwenden."
+                ))
+                Stepper(value: unrollCountBinding, in: 1...50) {
+                    Text("Einträge anzeigen: \(unrollCountBinding.wrappedValue)")
+                }
+                .help("Maximale Anzahl der Einträge aus dem gewählten Ordner (1–50).")
+            }
+            if w.kind == .launcher {
+                Section("Apps im App-Starter") {
+                    if w.launcherApps.isEmpty {
+                        Text("Noch keine Apps hinzugefügt.").foregroundStyle(.secondary)
+                    }
+                    ForEach(w.launcherApps, id: \.self) { app in
+                        HStack(spacing: 8) {
+                            Image(nsImage: fileIcon(app)).resizable().frame(width: 24, height: 24)
+                            Text(FileManager.default.displayName(atPath: app).replacingOccurrences(of: ".app", with: ""))
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
+                            Stepper(value: appFileCountBinding(for: app), in: 1...50) {
+                                Text("\(store.instance(w.id)?.fileCount(for: app) ?? w.fileCount(for: app))")
+                                    .monospacedDigit()
+                            }
+                            .controlSize(.small)
+                            .help("Anzahl der letzten Dateien für diese App")
+                            Button(role: .destructive) {
+                                LauncherStore.setApps(w.id, w.launcherApps.filter { $0 != app })
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("App aus dem App-Starter entfernen")
+                        }
+                    }
+                }
+            }
+            if w.kind == .shortcuts {
+                ShortcutsWidgetSettings(w: w)
+            }
             ForEach(w.kind.configFields, id: \.key) { field in
                 fieldView(field)
                 if let help = field.help { Text(help).font(.caption).foregroundStyle(.secondary) }
@@ -326,8 +531,53 @@ struct WidgetEditor: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .scrollDisabled(true)
         .frame(minHeight: 300)
+    }
+
+    private func workspaceBinding(_ id: UUID) -> Binding<Bool> {
+        Binding(
+            get: {
+                guard let assigned = store.instance(w.id)?.assignedWorkspaceIDs else { return true }
+                return assigned.contains(id)
+            },
+            set: { selected in
+                guard let current = store.instance(w.id) else { return }
+                var assigned = current.assignedWorkspaceIDs ?? Set(workspaceManager.workspaces.map(\.id))
+                if selected { assigned.insert(id) } else { assigned.remove(id) }
+                store.setConfig(w.id, "workspaceIDs", assigned.sorted { $0.uuidString < $1.uuidString }
+                    .map(\.uuidString).joined(separator: "\n"))
+            }
+        )
+    }
+
+    private var unrollEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { store.instance(w.id)?.config["unrollEnabled"] != "0" },
+            set: { store.setConfig(w.id, "unrollEnabled", $0 ? "1" : "0") }
+        )
+    }
+
+    private var unrollCountBinding: Binding<Int> {
+        Binding(
+            get: {
+                let instance = store.instance(w.id)
+                let raw = instance?.config["unrollCount"] ?? (w.kind == .mail ? instance?.config["count"] : nil)
+                return min(max(Int(raw ?? "") ?? 10, 1), 50)
+            },
+            set: {
+                store.setConfig(w.id, "unrollCount", String($0))
+                if w.kind == .mail { store.setConfig(w.id, "count", String($0)) }
+            }
+        )
+    }
+
+    private func appFileCountBinding(for app: String) -> Binding<Int> {
+        Binding(
+            get: { store.instance(w.id)?.fileCount(for: app) ?? w.fileCount(for: app) },
+            set: { store.setConfig(w.id, "fileCount|\(app)", String($0)) }
+        )
     }
 
     @ViewBuilder private func fieldView(_ f: ConfigField) -> some View {
@@ -342,6 +592,22 @@ struct WidgetEditor: View {
             VStack(alignment: .leading) {
                 Text(f.label)
                 TextEditor(text: binding).font(.system(.body, design: .monospaced)).frame(height: 90)
+            }
+        case .directory:
+            HStack {
+                TextField(f.label, text: binding, prompt: Text(f.placeholder))
+                Button("Auswählen …") {
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.allowsMultipleSelection = false
+                    let currentPath = (binding.wrappedValue as NSString).expandingTildeInPath
+                    if !currentPath.isEmpty { panel.directoryURL = URL(fileURLWithPath: currentPath) }
+                    NSApp.activate(ignoringOtherApps: true)
+                    if panel.runModal() == .OK, let url = panel.url {
+                        binding.wrappedValue = url.path
+                    }
+                }
             }
         case .choice(let options):
             Picker(f.label, selection: binding) {
@@ -398,7 +664,7 @@ struct ProfileSettings: View {
                     HStack {
                         Image(systemName: p.id == store.activeProfileID ? "largecircle.fill.circle" : "circle")
                             .foregroundStyle(Color.accentColor)
-                            .onTapGesture { store.activeProfileID = p.id }
+                            .onTapGesture { store.switchProfile(p.id) }
                         TextField("Name", text: $p.name)
                         Text("\(p.widgets.count) Widgets").foregroundStyle(.secondary).font(.caption)
                         Button(role: .destructive) { store.deleteProfile(p.id) } label: { Image(systemName: "trash") }
@@ -412,11 +678,23 @@ struct ProfileSettings: View {
                     Button("Leer anlegen") { store.addProfile(named: name, copyCurrent: false); newName = "" }
                     Button("Aktuelles kopieren") { store.addProfile(named: name, copyCurrent: true); newName = "" }
                 }
-                Text("Profile wechselst du über das Menüleisten-Symbol oder automatisch mit einem Arbeitsbereich.")
+                Text("Profile wechselst du oberhalb des Docks, über das Menüleisten-Symbol oder automatisch mit einem Arbeitsbereich.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Profil-Vorlagen") {
+                ForEach(DockProfilePreset.allCases) { preset in
+                    Button {
+                        store.addProfile(preset)
+                    } label: {
+                        Label("\(preset.title) hinzufügen", systemImage: "plus.circle")
+                    }
+                }
+                Text("Jede Vorlage enthält eine passende Widget-Auswahl und ein eigenes Farbschema. Anschliessend kannst du Widgets frei ergänzen, entfernen und sortieren.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .navigationTitle("Profile")
     }
 
@@ -589,6 +867,7 @@ struct WorkspaceEditor: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     private func addApps() {

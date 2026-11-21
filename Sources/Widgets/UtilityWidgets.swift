@@ -112,7 +112,7 @@ struct ConverterWidget: View {
         let from = w.cfg("from", "EUR").uppercased(), to = w.cfg("to", "CHF").uppercased()
         let amount = Double(w.cfg("amount", "100").replacingOccurrences(of: ",", with: ".")) ?? 0
         let rate = cache.rate(from, to)
-        let result = rate.map { (amount * $0).formatted(.number.precision(.fractionLength(2)).locale(Locale(identifier: "de_CH"))) } ?? "…"
+        let result = rate.map { (amount * $0).formatted(.number.precision(.fractionLength(2)).locale(AppLanguageSettings.shared.locale)) } ?? "…"
         HStack(spacing: 8 * s) {
             VStack(alignment: .leading, spacing: 0) {
                 if w.size > 1 {
@@ -248,6 +248,99 @@ struct GitHubWidget: View {
     }
 }
 
+struct DeveloperUsageWidget: View {
+    let w: WidgetInstance
+    @Environment(\.dockScale) private var s
+    @State private var openError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5 * s) {
+            HStack(spacing: 5 * s) {
+                Image(systemName: "speedometer")
+                    .foregroundStyle(Color.accentColor)
+                Text("Kontingente").font(.system(size: 10 * s, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4 * s) {
+                ForEach(DeveloperUsageProvider.allCases) { provider in
+                    Button { open(provider) } label: {
+                        HStack(spacing: 4 * s) {
+                            Image(systemName: provider.symbol)
+                            Text(provider.title).font(.system(size: 9 * s, weight: .medium))
+                                .lineLimit(1).minimumScaleFactor(0.75)
+                            Spacer(minLength: 0)
+                            Image(systemName: "arrow.up.forward").font(.system(size: 7 * s))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .help(provider.help)
+                }
+            }
+            if let openError {
+                Text(openError).font(.system(size: 8 * s)).foregroundStyle(.orange).lineLimit(2)
+            }
+        }
+        .tilePadding(s)
+        .help("Öffnet die Nutzungsübersicht des jeweiligen Anbieters; aktuelle Restquoten werden dort angezeigt.")
+    }
+
+    private func open(_ provider: DeveloperUsageProvider) {
+        guard let url = URL(string: provider.url) else {
+            openError = "Die Anbieter-Adresse ist ungültig."
+            return
+        }
+        guard NSWorkspace.shared.open(url) else {
+            openError = "\(provider.title) konnte nicht geöffnet werden."
+            return
+        }
+        openError = nil
+    }
+}
+
+private enum DeveloperUsageProvider: String, CaseIterable, Identifiable {
+    case claude, codex, copilot, cursor
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        case .copilot: "Copilot"
+        case .cursor: "Cursor"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .claude: "sparkle"
+        case .codex: "sparkles"
+        case .copilot: "chevron.left.forwardslash.chevron.right"
+        case .cursor: "cursorarrow.rays"
+        }
+    }
+
+    var url: String {
+        switch self {
+        case .claude: "https://claude.ai/settings/usage"
+        case .codex: "https://chatgpt.com/codex/settings/usage"
+        case .copilot: "https://github.com/settings/billing"
+        case .cursor: "https://cursor.com/settings"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .claude: "Claude-Plan und Verbrauch öffnen"
+        case .codex: "Codex-Nutzungsübersicht öffnen"
+        case .copilot: "Copilot in VS Code und Coding Agent: GitHub-Nutzungsübersicht öffnen"
+        case .cursor: "Cursor-Kontoeinstellungen öffnen"
+        }
+    }
+}
+
 // MARK: - Generic JSON metric (Plausible, Stripe, Shopify, own APIs …)
 
 final class MetricService: ObservableObject {
@@ -314,9 +407,420 @@ struct MetricWidget: View {
     }
 
     private func format(_ v: Double) -> String {
-        let de = Locale(identifier: "de_CH")
+        let de = AppLanguageSettings.shared.locale
         if abs(v) >= 1_000_000 { return (v / 1_000_000).formatted(.number.precision(.fractionLength(1)).locale(de)) + "M" }
         if v == v.rounded() { return Int(v).formatted(.number.locale(de)) }
         return v.formatted(.number.precision(.fractionLength(2)).locale(de))
+    }
+}
+
+struct ShortcutRunSchedule {
+    var mode: String
+    var hour: Int
+    var minute: Int
+
+    init(rawValue: String) {
+        let parts = rawValue.split(separator: "|", maxSplits: 1).map(String.init)
+        mode = parts.first == "daily" ? "daily" : "click"
+        let time = parts.count > 1 ? parts[1].split(separator: ":").compactMap { Int($0) } : []
+        hour = time.indices.contains(0) ? min(max(time[0], 0), 23) : 9
+        minute = time.indices.contains(1) ? min(max(time[1], 0), 59) : 0
+    }
+
+    var rawValue: String {
+        mode == "daily" ? "daily|\(String(format: "%02d:%02d", hour, minute))" : "click"
+    }
+
+    var pickerDate: Date {
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        components.hour = hour
+        components.minute = minute
+        return Calendar.current.date(from: components) ?? Date()
+    }
+
+    mutating func setTime(_ date: Date) {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        hour = components.hour ?? hour
+        minute = components.minute ?? minute
+    }
+}
+
+final class ShortcutsCatalog: ObservableObject {
+            static let shared = ShortcutsCatalog()
+
+            @Published private(set) var names: [String] = []
+            @Published private(set) var runningName: String?
+            @Published private(set) var message: String?
+            @Published private(set) var error: String?
+            @Published private(set) var isLoading = false
+
+            private let queue = DispatchQueue(label: "ch.crohniq.dock.shortcuts", qos: .utility, attributes: .concurrent)
+
+            func refresh() {
+                guard !isLoading else { return }
+                isLoading = true
+                queue.async { [weak self] in
+                    let result = Result {
+                        let output = try Self.execute(["list"], outputToPipe: true)
+                        return output.split(whereSeparator: \.isNewline).map {
+                            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }.filter { !$0.isEmpty }
+                    }
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.isLoading = false
+                        switch result {
+                        case .success(let names):
+                            self.names = names.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+                            self.error = nil
+                        case .failure(let error):
+                            self.error = error.localizedDescription
+                        }
+                    }
+                }
+            }
+
+            func run(_ name: String, completion: ((Bool) -> Void)? = nil) {
+                guard runningName == nil, names.contains(name) else {
+                    completion?(false)
+                    return
+                }
+                runningName = name
+                message = nil
+                error = nil
+                queue.async { [weak self] in
+                    let result = Result { try Self.execute(["run", name], outputToPipe: false) }
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.runningName = nil
+                        switch result {
+                        case .success:
+                            self.message = "„\(name)“ ausgeführt"
+                            completion?(true)
+                        case .failure(let error):
+                            self.error = error.localizedDescription
+                            completion?(false)
+                        }
+                    }
+                }
+            }
+
+            private static func execute(_ arguments: [String], outputToPipe: Bool) throws -> String {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
+                process.arguments = arguments
+                let pipe = Pipe()
+                if outputToPipe {
+                    process.standardOutput = pipe
+                    process.standardError = pipe
+                } else {
+                    process.standardOutput = FileHandle.nullDevice
+                    process.standardError = pipe
+                }
+                try process.run()
+                let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                process.waitUntilExit()
+                guard process.terminationStatus == 0 else {
+                    throw NSError(domain: "ShortcutsCLI", code: Int(process.terminationStatus),
+                                  userInfo: [NSLocalizedDescriptionKey: output.isEmpty ? "Der Kurzbefehl konnte nicht ausgeführt werden." : output])
+                }
+                return output
+            }
+}
+
+@MainActor
+final class ShortcutsScheduler {
+    static let shared = ShortcutsScheduler()
+
+    private struct ScheduledRun {
+        let name: String
+        let key: String
+        let day: String
+    }
+
+    private var timer: Timer?
+    private var queue: [ScheduledRun] = []
+    private var queuedKeys = Set<String>()
+    private var isRunning = false
+
+    private init() {}
+
+    func start() {
+        guard timer == nil else { return }
+        ShortcutsCatalog.shared.refresh()
+        timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            self?.checkDueShortcuts()
+        }
+        checkDueShortcuts()
+    }
+
+    private func checkDueShortcuts() {
+        let now = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: Date())
+        guard let year = now.year, let month = now.month, let dayNumber = now.day,
+              let hour = now.hour, let minute = now.minute else { return }
+        let day = String(format: "%04d-%02d-%02d", year, month, dayNumber)
+        let catalog = ShortcutsCatalog.shared
+
+        for profile in DockStore.shared.profiles {
+            for widget in profile.widgets where widget.kind == .shortcuts {
+                for name in ShortcutsWidget.selectedNames(widget, available: catalog.names) {
+                    let configKey = "shortcutSchedule|\(name)"
+                    let schedule = ShortcutRunSchedule(rawValue: widget.cfg(configKey, "click"))
+                    guard schedule.mode == "daily", schedule.hour == hour, schedule.minute == minute else { continue }
+                    let runKey = "shortcuts.lastRun.\(name)"
+                    guard UserDefaults.standard.string(forKey: runKey) != day, !queuedKeys.contains(runKey) else { continue }
+                    queuedKeys.insert(runKey)
+                    queue.append(ScheduledRun(name: name, key: runKey, day: day))
+                }
+            }
+        }
+        runNext()
+    }
+
+    private func runNext() {
+        guard !isRunning, ShortcutsCatalog.shared.runningName == nil, !queue.isEmpty else { return }
+        let scheduled = queue.removeFirst()
+        isRunning = true
+        UserDefaults.standard.set(scheduled.day, forKey: scheduled.key)
+        ShortcutsCatalog.shared.run(scheduled.name) { [weak self] _ in
+            guard let self else { return }
+            self.queuedKeys.remove(scheduled.key)
+            self.isRunning = false
+            self.runNext()
+        }
+    }
+}
+
+struct ShortcutsWidget: View {
+    let w: WidgetInstance
+    @ObservedObject private var catalog = ShortcutsCatalog.shared
+    @Environment(\.dockScale) private var s
+
+    private var visibleNames: [String] {
+        let selected = Self.selectedNames(w, available: catalog.names)
+        let count = min(max(w.cfgInt("count", 5), 1), 12)
+        return Array(selected.prefix(min(count, w.size == 1 ? 1 : w.size == 2 ? 2 : 3)))
+    }
+
+    static func selectedNames(_ w: WidgetInstance, available: [String]) -> [String] {
+        let configured = w.cfg("favorites").split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if w.cfg("selectionMode") != "selected", configured.isEmpty { return available }
+        return configured.compactMap { selected in
+            available.first { $0.localizedCaseInsensitiveCompare(selected) == .orderedSame }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3 * s) {
+            HStack(spacing: 5 * s) {
+                Image(systemName: "command").foregroundStyle(Color.accentColor)
+                Text("Kurzbefehle").font(.system(size: 10 * s, weight: .semibold))
+                Spacer(minLength: 0)
+                Button { catalog.refresh() } label: {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 9 * s))
+                }
+                .buttonStyle(.plain)
+                .help("Kurzbefehle neu laden")
+            }
+            if let error = catalog.error {
+                Text(error).font(.system(size: 8 * s)).foregroundStyle(.orange).lineLimit(2)
+            } else if visibleNames.isEmpty {
+                Text(catalog.isLoading ? "Lade Kurzbefehle …" : "Keine passenden Kurzbefehle")
+                    .font(.system(size: 9 * s)).foregroundStyle(Theme.secondary).lineLimit(1)
+            } else {
+                ForEach(visibleNames, id: \.self) { name in
+                    Button { catalog.run(name) } label: {
+                        HStack(spacing: 5 * s) {
+                            Image(systemName: catalog.runningName == name ? "ellipsis" : "play.fill")
+                                .font(.system(size: 8 * s))
+                                .foregroundStyle(Color.accentColor)
+                            Text(name).font(.system(size: 9 * s, weight: .medium))
+                                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(catalog.runningName != nil)
+                    .help("„\(name)“ ausführen")
+                }
+            }
+            if let message, w.size >= 3 {
+                Text(message).font(.system(size: 8 * s)).foregroundStyle(Theme.secondary).lineLimit(1)
+            }
+        }
+        .tilePadding(s)
+        .task {
+            catalog.refresh()
+            ShortcutsScheduler.shared.start()
+        }
+    }
+
+    private var message: String? { catalog.message }
+}
+
+struct ShortcutsHoverList: View {
+    let w: WidgetInstance
+    @ObservedObject private var catalog = ShortcutsCatalog.shared
+
+    private var names: [String] {
+        let selected = ShortcutsWidget.selectedNames(w, available: catalog.names)
+        let count = min(max(Int(w.cfg("unrollCount", "10")) ?? 10, 1), 50)
+        return Array(selected.prefix(count))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Kurzbefehle", systemImage: "command").font(.headline)
+                Spacer()
+                Button("Neu laden") { catalog.refresh() }.controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+
+            if let error = catalog.error {
+                Text(error).font(.callout).foregroundStyle(.orange).padding(.horizontal, 12)
+            } else if names.isEmpty {
+                Text(catalog.isLoading ? "Kurzbefehle werden geladen …" : "Keine Kurzbefehle ausgewählt.")
+                    .font(.callout).foregroundStyle(Theme.secondary).padding(.horizontal, 12)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(names, id: \.self) { name in
+                            let schedule = ShortcutRunSchedule(rawValue: w.cfg("shortcutSchedule|\(name)", "click"))
+                            Button { catalog.run(name) } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: catalog.runningName == name ? "ellipsis" : "play.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                    Text(name).lineLimit(1)
+                                    Spacer(minLength: 0)
+                                    if schedule.mode == "daily" {
+                                        Text("täglich \(String(format: "%02d:%02d", schedule.hour, schedule.minute))")
+                                            .font(.caption).foregroundStyle(Theme.secondary)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(catalog.runningName != nil)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .frame(maxHeight: 360)
+            }
+            if let message = catalog.message {
+                Text(message).font(.caption).foregroundStyle(Theme.secondary).padding(.horizontal, 12)
+            }
+        }
+        .onAppear {
+            catalog.refresh()
+            ShortcutsScheduler.shared.start()
+        }
+    }
+}
+
+struct ShortcutsWidgetSettings: View {
+    let w: WidgetInstance
+    @ObservedObject private var store = DockStore.shared
+    @ObservedObject private var catalog = ShortcutsCatalog.shared
+
+    var body: some View {
+        Section("Kurzbefehle auswählen") {
+            HStack {
+                Text("Nur ausgewählte Kurzbefehle erscheinen im Widget und in der Tora.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Aktualisieren") { catalog.refresh() }
+            }
+            if catalog.isLoading && catalog.names.isEmpty {
+                ProgressView()
+            } else if catalog.names.isEmpty {
+                Text(catalog.error ?? "Keine Kurzbefehle gefunden.")
+                    .foregroundStyle(catalog.error == nil ? Theme.secondary : Color.orange)
+            } else {
+                ForEach(catalog.names, id: \.self) { name in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(name, isOn: selectionBinding(for: name))
+                        if selectionBinding(for: name).wrappedValue {
+                            HStack {
+                                Picker("Ausführung", selection: scheduleModeBinding(for: name)) {
+                                    Text("Nur per Klick").tag("click")
+                                    Text("Täglich").tag("daily")
+                                }
+                                if ShortcutRunSchedule(rawValue: scheduleValue(for: name)).mode == "daily" {
+                                    DatePicker(
+                                        "Uhrzeit",
+                                        selection: scheduleTimeBinding(for: name),
+                                        displayedComponents: .hourAndMinute
+                                    )
+                                    .labelsHidden()
+                                }
+                            }
+                            .padding(.leading, 22)
+                        }
+                    }
+                }
+            }
+            if let error = catalog.error, !catalog.names.isEmpty {
+                Text(error).font(.caption).foregroundStyle(.orange)
+            }
+            Text("Tägliche Ausführung erfolgt zur gewählten Uhrzeit, solange Crohniq Dock läuft.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .onAppear {
+            catalog.refresh()
+            ShortcutsScheduler.shared.start()
+        }
+    }
+
+    private func selectionBinding(for name: String) -> Binding<Bool> {
+        Binding(
+            get: {
+                guard let current = store.instance(w.id) else { return false }
+                return ShortcutsWidget.selectedNames(current, available: catalog.names).contains(name)
+            },
+            set: { selected in
+                let current = store.instance(w.id) ?? w
+                let configured = current.cfg("favorites").split(whereSeparator: \.isNewline)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                var names = current.cfg("selectionMode") == "selected"
+                    ? configured
+                    : (configured.isEmpty ? catalog.names : configured)
+                names.removeAll { $0.localizedCaseInsensitiveCompare(name) == .orderedSame }
+                if selected { names.append(name) }
+                store.setConfig(w.id, "selectionMode", "selected")
+                store.setConfig(w.id, "favorites", names.joined(separator: "\n"))
+            }
+        )
+    }
+
+    private func scheduleValue(for name: String) -> String {
+        store.instance(w.id)?.cfg("shortcutSchedule|\(name)", "click") ?? "click"
+    }
+
+    private func scheduleModeBinding(for name: String) -> Binding<String> {
+        Binding(
+            get: { ShortcutRunSchedule(rawValue: scheduleValue(for: name)).mode },
+            set: { mode in
+                var schedule = ShortcutRunSchedule(rawValue: scheduleValue(for: name))
+                schedule.mode = mode
+                store.setConfig(w.id, "shortcutSchedule|\(name)", schedule.rawValue)
+            }
+        )
+    }
+
+    private func scheduleTimeBinding(for name: String) -> Binding<Date> {
+        Binding(
+            get: { ShortcutRunSchedule(rawValue: scheduleValue(for: name)).pickerDate },
+            set: { date in
+                var schedule = ShortcutRunSchedule(rawValue: scheduleValue(for: name))
+                schedule.setTime(date)
+                store.setConfig(w.id, "shortcutSchedule|\(name)", schedule.rawValue)
+            }
+        )
     }
 }
