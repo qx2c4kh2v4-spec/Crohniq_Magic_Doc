@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 // MARK: - Color picker
 
@@ -248,10 +249,81 @@ struct GitHubWidget: View {
     }
 }
 
+@MainActor
+final class DeveloperUsageStore: ObservableObject {
+    static let shared = DeveloperUsageStore()
+
+    struct Value {
+        var day: Int = 0
+        var month: Int = 0
+    }
+
+    @Published private(set) var values: [DeveloperUsageProvider: Value] = [:]
+
+    private init() {}
+
+    func value(for provider: DeveloperUsageProvider) -> Value {
+        values[provider] ?? Value()
+    }
+
+    func refresh() {
+        let calendar = Calendar.current
+        let now = Date()
+        let dayStart = calendar.startOfDay(for: now)
+        var monthComponents = calendar.dateComponents([.year, .month], from: now)
+        monthComponents.day = 1
+        let monthStart = calendar.date(from: monthComponents) ?? dayStart
+
+        values[.claude] = Value(
+            day: countJSONLines(at: NSHomeDirectory() + "/.claude/history.jsonl", timestampKey: "timestamp", scale: 1000, after: dayStart),
+            month: countJSONLines(at: NSHomeDirectory() + "/.claude/history.jsonl", timestampKey: "timestamp", scale: 1000, after: monthStart)
+        )
+        values[.codex] = Value(
+            day: countJSONLines(at: NSHomeDirectory() + "/.codex/history.jsonl", timestampKey: "ts", scale: 1, after: dayStart),
+            month: countJSONLines(at: NSHomeDirectory() + "/.codex/history.jsonl", timestampKey: "ts", scale: 1, after: monthStart)
+        )
+        values[.cursor] = Value(
+            day: cursorCount(after: dayStart),
+            month: cursorCount(after: monthStart)
+        )
+    }
+
+    private func countJSONLines(at path: String, timestampKey: String, scale: Double, after date: Date) -> Int {
+        guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return 0 }
+        let threshold = date.timeIntervalSince1970 * scale
+        var count = 0
+        for line in data.split(separator: "\n") {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let raw = object[timestampKey] as? NSNumber else { continue }
+            let timestamp = raw.doubleValue
+            if timestamp >= threshold { count += 1 }
+        }
+        return count
+    }
+
+    private func cursorCount(after date: Date) -> Int {
+        let db = NSHomeDirectory() + "/.cursor/ai-tracking/ai-code-tracking.db"
+        guard FileManager.default.isReadableFile(atPath: db) else { return 0 }
+        let threshold = Int64(date.timeIntervalSince1970 * 1000)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [db, "select count(*) from ai_code_hashes where createdAt >= \(threshold);"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        guard (try? process.run()) != nil else { return 0 }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return 0 }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return Int(String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
+    }
+}
+
 struct DeveloperUsageWidget: View {
     let w: WidgetInstance
     @Environment(\.dockScale) private var s
     @State private var openError: String?
+    @StateObject private var usage = DeveloperUsageStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5 * s) {
@@ -260,16 +332,33 @@ struct DeveloperUsageWidget: View {
                     .foregroundStyle(Color.accentColor)
                 Text("Kontingente").font(.system(size: 10 * s, weight: .semibold))
                 Spacer(minLength: 0)
+                Button {
+                    usage.refresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 8 * s))
+                }
+                .buttonStyle(.plain)
+                .help("Nutzung aktualisieren")
             }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4 * s) {
                 ForEach(DeveloperUsageProvider.allCases) { provider in
                     Button { open(provider) } label: {
-                        HStack(spacing: 4 * s) {
+                        VStack(alignment: .leading, spacing: 2 * s) {
+                            HStack(spacing: 4 * s) {
                             Image(systemName: provider.symbol)
                             Text(provider.title).font(.system(size: 9 * s, weight: .medium))
                                 .lineLimit(1).minimumScaleFactor(0.75)
                             Spacer(minLength: 0)
                             Image(systemName: "arrow.up.forward").font(.system(size: 7 * s))
+                        }
+                            let value = usage.value(for: provider)
+                            Text("Heute \(value.day)")
+                                .font(.system(size: 8 * s, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                            Text("Monat \(value.month)")
+                                .font(.system(size: 7 * s))
+                                .foregroundStyle(Theme.secondary)
                         }
                         .contentShape(Rectangle())
                     }
@@ -283,7 +372,8 @@ struct DeveloperUsageWidget: View {
             }
         }
         .tilePadding(s)
-        .help("Öffnet die Nutzungsübersicht des jeweiligen Anbieters; aktuelle Restquoten werden dort angezeigt.")
+        .task { usage.refresh() }
+        .help("Lokale Tages-/Monatsnutzung anzeigen. Pfeil öffnet die offizielle Anbieterübersicht.")
     }
 
     private func open(_ provider: DeveloperUsageProvider) {
@@ -299,7 +389,7 @@ struct DeveloperUsageWidget: View {
     }
 }
 
-private enum DeveloperUsageProvider: String, CaseIterable, Identifiable {
+enum DeveloperUsageProvider: String, CaseIterable, Identifiable {
     case claude, codex, copilot, cursor
 
     var id: String { rawValue }
