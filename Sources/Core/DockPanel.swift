@@ -53,6 +53,12 @@ final class DockPanelController: NSObject, NSWindowDelegate {
             .sink { [weak self] in self?.layout(animated: true) }
             .store(in: &bag)
 
+        RunningApps.shared.objectWillChange
+            .receive(on: RunLoop.main)
+            .debounce(for: .milliseconds(30), scheduler: RunLoop.main)
+            .sink { [weak self] in self?.layout(animated: true) }
+            .store(in: &bag)
+
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }

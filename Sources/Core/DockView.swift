@@ -5,6 +5,7 @@ struct DockView: View {
     @ObservedObject private var store = DockStore.shared
     @ObservedObject private var themeState = ThemeState.shared
     @ObservedObject private var workspaceManager = WorkspaceManager.shared
+    @ObservedObject private var runningApps = RunningApps.shared
     @ObservedObject private var languageSettings = AppLanguageSettings.shared
     @State private var dragging: UUID?
 
@@ -16,8 +17,8 @@ struct DockView: View {
         let layout = store.vertical
             ? AnyLayout(VStackLayout(alignment: store.settings.position == .right ? .trailing : .leading, spacing: store.gap))
             : AnyLayout(HStackLayout(spacing: store.gap))
-        VStack(spacing: store.profiles.isEmpty ? 0 : store.gap) {
-            if !store.profiles.isEmpty, store.settings.position == .bottom {
+        VStack(spacing: store.showsHeader ? store.gap : 0) {
+            if store.showsHeader, store.settings.position == .bottom {
                 profileHeader(s: s)
             }
             layout {
@@ -41,7 +42,7 @@ struct DockView: View {
                         .onDrop(of: [.text], delegate: ReorderDrop(target: w.id, dragging: $dragging))
                 }
             }
-            if !store.profiles.isEmpty, store.settings.position != .bottom {
+            if store.showsHeader, store.settings.position != .bottom {
                 profileHeader(s: s)
             }
         }
@@ -61,16 +62,148 @@ struct DockView: View {
 
     @ViewBuilder
     private func profileHeader(s: CGFloat) -> some View {
-        ZStack {
-            ProfileSwitcher()
-                .frame(width: store.profileStripWidth,
-                       height: store.profileStripHeight)
+        HStack(spacing: store.gap) {
+            if !workspaceManager.workspaces.isEmpty {
+                WorkspaceSymbolStrip()
+                    .frame(width: store.workspaceSymbolStripWidth, height: store.profileStripHeight)
+                if !runningApps.apps.isEmpty {
+                    RunningAppsHeader()
+                        .frame(width: store.runningAppsHeaderWidth, height: store.profileStripHeight)
+                }
+            }
+            if !store.profiles.isEmpty {
+                ProfileSwitcher()
+                    .frame(width: store.profileStripWidth, height: store.profileStripHeight)
+            }
+            Spacer(minLength: 0)
             AppIdentityBadge(scale: s)
-                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(width: store.contentSize.width - store.barPadding * 2,
                height: store.profileStripHeight)
     }
+}
+
+/// Workspace symbols to the left of the profiles. A click activates that workspace.
+private struct WorkspaceSymbolStrip: View {
+    @ObservedObject private var mgr = WorkspaceManager.shared
+    @ObservedObject private var store = DockStore.shared
+    @Environment(\.dockScale) private var s
+
+    var body: some View {
+        HStack(spacing: 3 * s) {
+            ForEach(Array(mgr.workspaces.enumerated()), id: \.element.id) { index, ws in
+                let active = mgr.activeID == ws.id
+                Button { mgr.apply(ws) } label: {
+                    Image(systemName: ws.symbol)
+                        .font(.system(size: 13 * s, weight: .semibold))
+                        .foregroundStyle(active ? Theme.fg : Theme.secondary)
+                        .frame(width: 22 * s, height: 22 * s)
+                        .background {
+                            if active {
+                                RoundedRectangle(cornerRadius: 7 * s, style: .continuous)
+                                    .fill(Color.accentColor.opacity(0.35))
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .help(workspaceHelp(ws, index: index))
+                .accessibilityLabel("\(ws.name) aktivieren")
+            }
+        }
+        .padding(.horizontal, 3 * s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { headerCapsule(glassTint: store.settings.glassTint, opacity: store.settings.barOpacity) }
+        .clipShape(Capsule())
+    }
+
+    private func workspaceHelp(_ ws: Workspace, index: Int) -> String {
+        let shortcut = index < 9 ? "  (⌃⌥\(index + 1))" : ""
+        return "\(ws.name) aktivieren\(shortcut)"
+    }
+}
+
+/// Running apps at half the workspace-symbol size, immediately to their right.
+private struct RunningAppsHeader: View {
+    @ObservedObject private var running = RunningApps.shared
+    @Environment(\.dockScale) private var s
+
+    var body: some View {
+        let count = running.apps.count
+        let shown = min(count, 12)
+        let iconWidth = (CGFloat(shown) * 11 + CGFloat(max(0, shown - 1)) * 3) * s
+        HStack(spacing: 4 * s) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 3 * s) {
+                    ForEach(running.apps, id: \.processIdentifier) { app in
+                        Menu {
+                            Button("Beenden") { running.quit([app], force: false) }
+                            Button("Sofort beenden") { running.quit([app], force: true) }
+                        } label: {
+                            Image(nsImage: app.icon ?? NSImage())
+                                .resizable()
+                                .frame(width: 11 * s, height: 11 * s)
+                        }
+                        .menuStyle(.button)
+                        .buttonStyle(.plain)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("\(app.localizedName ?? "App") beenden oder sofort beenden")
+                        .accessibilityLabel("\(app.localizedName ?? "App") beenden")
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+            .frame(width: iconWidth)
+
+            Button(action: confirmQuitAll) {
+                Text("Alle")
+                    .font(.system(size: 9 * s, weight: .semibold))
+                    .frame(width: 34 * s, height: 22 * s)
+            }
+            .buttonStyle(.plain)
+            .background(Capsule().fill(Theme.tileHi.opacity(0.7)))
+            .help("Alle geöffneten Apps beenden")
+            .accessibilityLabel("Alle Apps beenden")
+        }
+        .padding(.horizontal, 4 * s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func confirmQuitAll() {
+        let apps = running.apps
+        guard !apps.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Alle \(apps.count) Apps beenden?"
+        alert.informativeText = "Beenden gibt den Apps Zeit zum Sichern. Sofort beenden verwirft ungesicherte Änderungen."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Beenden")
+        alert.addButton(withTitle: "Sofort beenden")
+        alert.addButton(withTitle: "Abbrechen")
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: running.quit(apps, force: false)
+        case .alertSecondButtonReturn: running.quit(apps, force: true)
+        default: break
+        }
+    }
+}
+
+private struct HeaderCapsule: View {
+    var glassTint: Double?
+    var opacity: Double
+
+    var body: some View {
+        if Theme.glass {
+            Capsule().fill(.clear)
+                .glassEffect(.clear.tint(Theme.tile.opacity((glassTint ?? 0.18) + 0.05)), in: Capsule())
+        } else {
+            Capsule().fill(Theme.bar.opacity(opacity))
+        }
+    }
+}
+
+private func headerCapsule(glassTint: Double?, opacity: Double) -> some View {
+    HeaderCapsule(glassTint: glassTint, opacity: opacity)
 }
 
 struct AppIdentityBadge: View {

@@ -849,15 +849,51 @@ final class DockStore: ObservableObject {
 
     var profileStripHeight: CGFloat { 28 * unit / 64 }
 
+    /// Header above or below the tiles: workspace symbols, open apps, profiles.
+    var showsHeader: Bool {
+        !profiles.isEmpty || !WorkspaceManager.shared.workspaces.isEmpty
+    }
+
+    /// Workspace symbols in the header. Each symbol is 22 pt at the 64 pt base.
+    var workspaceSymbolStripWidth: CGFloat {
+        let count = WorkspaceManager.shared.workspaces.count
+        guard count > 0 else { return 0 }
+        let scale = unit / 64
+        return (CGFloat(count) * 22 + CGFloat(max(0, count - 1)) * 3 + 6) * scale
+    }
+
+    /// Open apps sit to the right of the workspace symbols at half that size (11 pt).
+    var runningAppsHeaderWidth: CGFloat {
+        guard !WorkspaceManager.shared.workspaces.isEmpty else { return 0 }
+        let count = RunningApps.shared.apps.count
+        guard count > 0 else { return 0 }
+        let scale = unit / 64
+        let shown = min(count, 12)
+        let icons = CGFloat(shown) * 11 + CGFloat(max(0, shown - 1)) * 3
+        return (icons + 4 + 34 + 8) * scale
+    }
+
     var profileHeaderWidth: CGFloat {
-        max(dockRowSize.width, profileStripWidth + gap + 172 * unit / 64)
+        let scale = unit / 64
+        var sum: CGFloat = 0
+        var parts = 0
+        func add(_ width: CGFloat) {
+            guard width > 0 else { return }
+            sum += width
+            parts += 1
+        }
+        add(workspaceSymbolStripWidth)
+        add(runningAppsHeaderWidth)
+        if !profiles.isEmpty { add(profileStripWidth) }
+        add(172 * scale)
+        // The header HStack also leaves a flexible spacer, so there is one gap per fixed part.
+        return max(dockRowSize.width, sum + CGFloat(parts) * gap)
     }
 
     var contentSize: CGSize {
         let row = dockRowSize
-        let hasProfileStrip = !profiles.isEmpty
-        let width = (hasProfileStrip ? profileHeaderWidth : row.width) + barPadding * 2
-        let height = row.height + (hasProfileStrip ? profileStripHeight + gap : 0) + barPadding * 2
+        let width = (showsHeader ? profileHeaderWidth : row.width) + barPadding * 2
+        let height = row.height + (showsHeader ? profileStripHeight + gap : 0) + barPadding * 2
         return CGSize(width: width, height: height)
     }
 }
