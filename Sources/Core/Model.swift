@@ -747,6 +747,29 @@ final class DockStore: ObservableObject {
         editingWidgetID = widget.id
     }
 
+    /// A running app is already a launcher widget inside this workspace.
+    func launcherShows(appPath: String, in workspaceID: UUID) -> Bool {
+        allActiveWidgets.contains { widget in
+            guard widget.kind == .launcher, widget.launcherApps.contains(appPath) else { return false }
+            guard let assigned = widget.assignedWorkspaceIDs else { return true }
+            return assigned.contains(workspaceID)
+        }
+    }
+
+    /// Pins one running app as its own launcher widget, visible only in that workspace.
+    @discardableResult
+    func pinAppAsWidget(path: String, name: String, workspaceID: UUID) -> Bool {
+        guard !path.isEmpty, profiles.indices.contains(activeIndex) else { return false }
+        guard !launcherShows(appPath: path, in: workspaceID) else { return false }
+        let widget = WidgetInstance(.launcher, size: 1, config: [
+            "apps": path,
+            "widgetName": name,
+            "workspaceIDs": workspaceID.uuidString,
+        ])
+        profiles[activeIndex].widgets.append(widget)
+        return true
+    }
+
     func remove(_ id: UUID) {
         profiles[activeIndex].widgets.removeAll { $0.id == id }
         if editingWidgetID == id { editingWidgetID = nil }

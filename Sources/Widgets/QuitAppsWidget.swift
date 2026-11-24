@@ -29,6 +29,49 @@ final class RunningApps: ObservableObject {
     }
 }
 
+/// Right-click menu for a running app that is not a menu-bar-only item.
+struct RunningAppActions: View {
+    let app: NSRunningApplication
+    @ObservedObject private var running = RunningApps.shared
+    @ObservedObject private var workspaces = WorkspaceManager.shared
+    @ObservedObject private var store = DockStore.shared
+
+    private var path: String? { app.bundleURL?.path }
+    private var appName: String {
+        app.localizedName ?? path.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent } ?? "App"
+    }
+
+    var body: some View {
+        Text(appName)
+        Button("Beenden") { running.quit([app], force: false) }
+        Button("Sofort beenden") { running.quit([app], force: true) }
+        Divider()
+        Button("Ausblenden") { app.hide() }
+        Button("Nach vorne holen") { app.activate() }
+        Divider()
+        if workspaces.workspaces.isEmpty {
+            Button("Arbeitsbereich anlegen …") { AppDelegate.shared.openSettings(page: .workspaces) }
+        } else {
+            Menu("Als Widget an Arbeitsbereich") {
+                ForEach(workspaces.workspaces) { workspace in
+                    let attached = path.map { store.launcherShows(appPath: $0, in: workspace.id) } ?? true
+                    Button {
+                        guard let path else { return }
+                        store.pinAppAsWidget(path: path, name: appName, workspaceID: workspace.id)
+                    } label: {
+                        if attached {
+                            Label("\(workspace.name) · schon angehängt", systemImage: workspace.symbol)
+                        } else {
+                            Label(workspace.name, systemImage: workspace.symbol)
+                        }
+                    }
+                    .disabled(attached || path == nil)
+                }
+            }
+        }
+    }
+}
+
 struct QuitAppsWidget: View {
     let w: WidgetInstance
     @ObservedObject private var running = RunningApps.shared
@@ -52,12 +95,7 @@ struct QuitAppsWidget: View {
             if w.size >= 2 {
                 ForEach(running.apps.prefix(w.size * 2 - 2), id: \.processIdentifier) { app in
                     Menu {
-                        Text(app.localizedName ?? "App")
-                        Button("Beenden") { running.quit([app], force: false) }
-                        Button("Sofort beenden (hart)") { running.quit([app], force: true) }
-                        Divider()
-                        Button("Ausblenden") { app.hide() }
-                        Button("Nach vorne holen") { app.activate() }
+                        RunningAppActions(app: app)
                     } label: {
                         Image(nsImage: app.icon ?? NSImage()).resizable().frame(width: 32 * s, height: 32 * s)
                     }

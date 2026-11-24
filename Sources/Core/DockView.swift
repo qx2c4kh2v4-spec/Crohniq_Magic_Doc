@@ -140,8 +140,7 @@ private struct RunningAppsHeader: View {
                 HStack(spacing: 4 * s) {
                     ForEach(running.apps, id: \.processIdentifier) { app in
                         Menu {
-                            Button("Beenden") { running.quit([app], force: false) }
-                            Button("Sofort beenden") { running.quit([app], force: true) }
+                            RunningAppActions(app: app)
                         } label: {
                             Image(nsImage: app.icon ?? NSImage())
                                 .resizable()
@@ -151,7 +150,7 @@ private struct RunningAppsHeader: View {
                         .buttonStyle(.plain)
                         .menuIndicator(.hidden)
                         .fixedSize()
-                        .help("\(app.localizedName ?? "App") beenden oder sofort beenden")
+                        .help("\(app.localizedName ?? "App"): beenden oder als Widget an einen Arbeitsbereich hängen")
                         .accessibilityLabel("\(app.localizedName ?? "App") beenden")
                     }
                 }
