@@ -323,13 +323,13 @@ struct AppsWidget: View {
         let capacity = w.size == 1 ? 4 : w.size * 2 + (w.size - 1)
         let shown = Array(items.prefix(capacity))
         let iconSize: CGFloat = (w.size == 1 ? 22 : 26) * s
-        let rows = 2
-        let cols = max(1, Int(ceil(Double(max(shown.count, 1)) / Double(rows))))
-        Grid(horizontalSpacing: 4 * s, verticalSpacing: 4 * s) {
+        let columns = shown.isEmpty ? 1 : (w.size == 1 ? min(2, shown.count) : max(1, Int(ceil(Double(shown.count) / 2))))
+        let rows = shown.isEmpty ? 1 : Int(ceil(Double(shown.count) / Double(columns)))
+        Grid(horizontalSpacing: 3 * s, verticalSpacing: 3 * s) {
             ForEach(0..<rows, id: \.self) { r in
                 GridRow {
-                    ForEach(0..<cols, id: \.self) { c in
-                        let idx = r * cols + c
+                    ForEach(0..<columns, id: \.self) { c in
+                        let idx = r * columns + c
                         if idx < shown.count {
                             let path = shown[idx]
                             Image(nsImage: fileIcon(path)).resizable()
@@ -340,14 +340,11 @@ struct AppsWidget: View {
                                     Button("Im Finder zeigen") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
                                     Button("Aus Widget entfernen") { remove(path) }
                                 }
-                        } else {
-                            Color.clear.frame(width: iconSize, height: iconSize)
                         }
                     }
                 }
             }
         }
-        .padding(6 * s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay {
             if items.isEmpty {

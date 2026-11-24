@@ -221,12 +221,19 @@ struct LauncherWidget: View {
                 }
                 .buttonStyle(.plain)
             } else if w.size == 1 && shown.count > 1 {
-                Grid(horizontalSpacing: 4 * s, verticalSpacing: 4 * s) {
-                    GridRow { slot(shown[safe: 0], icon: 22); slot(shown[safe: 1], icon: 22) }
-                    GridRow { slot(shown[safe: 2], icon: 22); slot(shown[safe: 3], icon: 22) }
+                let columns = min(2, shown.count)
+                let rows = Int(ceil(Double(shown.count) / Double(columns)))
+                Grid(horizontalSpacing: 3 * s, verticalSpacing: 3 * s) {
+                    ForEach(0..<rows, id: \.self) { row in
+                        GridRow {
+                            ForEach(0..<columns, id: \.self) { column in
+                                slot(shown[safe: row * columns + column], icon: 22)
+                            }
+                        }
+                    }
                 }
             } else {
-                HStack(spacing: 4 * s) {
+                HStack(spacing: 3 * s) {
                     ForEach(shown, id: \.self) { app in
                         slot(app, icon: w.size == 1 ? 44 : (w.size == 2 ? 34 : 38))
                     }
@@ -242,7 +249,6 @@ struct LauncherWidget: View {
                 }
             }
         }
-        .padding(6 * s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .contentShape(Rectangle())
@@ -310,8 +316,8 @@ private struct LauncherAppDropDelegate: DropDelegate {
             let row = location.y >= height / 2 ? 1 : 0
             slot = row * 2 + column
         } else {
-            let availableWidth = max(width - 12 * scale, 1)
-            let x = min(max(location.x - 6 * scale, 0), availableWidth)
+            let availableWidth = max(width, 1)
+            let x = min(max(location.x, 0), availableWidth)
             slot = Int(x / availableWidth * CGFloat(capacity))
         }
         let lastVisibleSlot = apps.count >= capacity ? max(capacity - 1, 0) : apps.count
@@ -338,7 +344,7 @@ struct AppSlot: View {
             Image(nsImage: fileIcon(app)).resizable().frame(width: icon, height: icon)
                 .scaleEffect(targeted ? 1.12 : 1)
             if showName {
-                Text(name).font(.system(size: 9)).lineLimit(1).frame(maxWidth: icon + 16)
+                Text(name).font(.system(size: 9)).lineLimit(1).frame(maxWidth: icon)
             }
         }
         .contentShape(Rectangle())

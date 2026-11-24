@@ -455,6 +455,11 @@ enum DockPosition: String, Codable, CaseIterable, Identifiable {
     var isVertical: Bool { self == .left || self == .right }
 }
 
+extension WidgetKind {
+    /// App and folder icons sit tight on the symbol. Everything else keeps a full tile.
+    var hugsIcon: Bool { self == .launcher || self == .apps }
+}
+
 enum AppLanguage: String, CaseIterable, Identifiable {
     case system = "system"
     case bulgarian = "bg"
@@ -837,8 +842,8 @@ final class DockStore: ObservableObject {
 
     // Layout metrics
     var unit: CGFloat { CGFloat(settings.tileSize) }
-    var gap: CGFloat { (unit * 0.125).rounded() }
-    var barPadding: CGFloat { (unit * 0.125).rounded() }
+    var gap: CGFloat { max(3, (unit * 0.06).rounded()) }
+    var barPadding: CGFloat { max(3, (unit * 0.06).rounded()) }
     var corner: CGFloat { unit * 0.26 }
     var grip: CGFloat { (unit * 0.19).rounded() }
     var vertical: Bool { settings.position.isVertical || (settings.position == .free && settings.freeVertical == true) }
@@ -847,16 +852,67 @@ final class DockStore: ObservableObject {
         CGFloat(units) * unit + CGFloat(units - 1) * gap
     }
 
-    var dockRowSize: CGSize {
-        let ws = activeWidgets
-        let units = ws.isEmpty ? [1] : ws.map(\.size)
-        let widths = units.map { width(for: $0) }
-        if vertical {
-            let h = CGFloat(units.count) * unit + CGFloat(units.count) * gap + grip
-            return CGSize(width: widths.max() ?? unit, height: h)
+    /// Icon widgets are only as large as the symbols they show. Standalone widgets keep the tile size.
+    func tileSize(for widget: WidgetInstance) -> CGSize {
+        switch widget.kind {
+        case .launcher: return launcherTileSize(widget)
+        case .apps: return appsTileSize(widget)
+        default: return CGSize(width: width(for: widget.size), height: unit)
         }
-        let w = widths.reduce(0, +) + CGFloat(units.count) * gap + grip
-        return CGSize(width: w, height: unit)
+    }
+
+    private func launcherTileSize(_ widget: WidgetInstance) -> CGSize {
+        let s = unit / 64
+        let apps = widget.launcherApps
+        if apps.isEmpty { return CGSize(width: 28 * s, height: 28 * s) }
+        if widget.size == 1 && apps.count > 1 {
+            let icon = 22 * s
+            let spacing = 3 * s
+            let shown = min(apps.count, 4)
+            let columns = min(2, shown)
+            let rows = Int(ceil(Double(shown) / Double(columns)))
+            return CGSize(
+                width: CGFloat(columns) * icon + CGFloat(columns - 1) * spacing,
+                height: CGFloat(rows) * icon + CGFloat(rows - 1) * spacing
+            )
+        }
+        let icon = (widget.size == 1 ? 44 : (widget.size == 2 ? 34 : 38)) * s
+        let capacity = widget.size == 1 ? 1 : (widget.size == 2 ? 2 : 3)
+        let shown = min(apps.count, capacity)
+        let spacing = 3 * s
+        let showsName = widget.size > 1 && apps.count <= widget.size
+        var width = CGFloat(shown) * icon + CGFloat(max(0, shown - 1)) * spacing
+        if widget.size > 1 { width += spacing + 24 * s }
+        let height = icon + (showsName ? 12 * s : 0)
+        return CGSize(width: width, height: height)
+    }
+
+    private func appsTileSize(_ widget: WidgetInstance) -> CGSize {
+        let s = unit / 64
+        let count = widget.cfg("paths").split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+        if count == 0 { return CGSize(width: 28 * s, height: 28 * s) }
+        let icon = (widget.size == 1 ? 22 : 26) * s
+        let spacing = 3 * s
+        let capacity = widget.size == 1 ? 4 : widget.size * 2 + (widget.size - 1)
+        let shown = min(count, capacity)
+        let columns = widget.size == 1 ? min(2, shown) : max(1, Int(ceil(Double(shown) / 2)))
+        let rows = Int(ceil(Double(shown) / Double(columns)))
+        return CGSize(
+            width: CGFloat(columns) * icon + CGFloat(max(0, columns - 1)) * spacing,
+            height: CGFloat(rows) * icon + CGFloat(max(0, rows - 1)) * spacing
+        )
+    }
+
+    var dockRowSize: CGSize {
+        let tiles = activeWidgets.isEmpty
+            ? [CGSize(width: unit, height: unit)]
+            : activeWidgets.map { tileSize(for: $0) }
+        if vertical {
+            let height = tiles.map(\.height).reduce(0, +) + CGFloat(tiles.count) * gap + grip
+            return CGSize(width: tiles.map(\.width).max() ?? unit, height: height)
+        }
+        let width = tiles.map(\.width).reduce(0, +) + CGFloat(tiles.count) * gap + grip
+        return CGSize(width: width, height: tiles.map(\.height).max() ?? unit)
     }
 
     var profileStripWidth: CGFloat {

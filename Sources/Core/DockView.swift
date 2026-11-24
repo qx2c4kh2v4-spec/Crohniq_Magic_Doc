@@ -23,7 +23,8 @@ struct DockView: View {
             }
             layout {
                 DockGrip(vertical: store.vertical)
-                    .frame(width: store.vertical ? store.unit : store.grip, height: store.vertical ? store.grip : store.unit)
+                    .frame(width: store.vertical ? store.dockRowSize.width : store.grip,
+                           height: store.vertical ? store.grip : store.dockRowSize.height)
                 if visibleWidgets.isEmpty {
                     Button { AppDelegate.shared.openSettings(page: .gallery) } label: {
                         Image(systemName: "plus").font(.system(size: 22 * s, weight: .semibold))
@@ -33,7 +34,7 @@ struct DockView: View {
                 }
                 ForEach(visibleWidgets) { w in
                     TileContainer(instance: w)
-                        .frame(width: store.width(for: w.size), height: store.unit)
+                        .frame(width: store.tileSize(for: w).width, height: store.tileSize(for: w).height)
                         .opacity(dragging == w.id ? 0.4 : 1)
                         .onDrag {
                             dragging = w.id
@@ -523,23 +524,29 @@ struct TileContainer: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: store.corner, style: .continuous)
-        WidgetHost(instance: instance)
+        let tile = WidgetHost(instance: instance)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .modifier(TileGlass(shape: shape, on: Theme.glass && !store.settings.showBar,
-                                tint: Theme.tile.opacity((store.settings.glassTint ?? 0.18) + 0.05)))
-            .background {
-                if Theme.glass && !store.settings.showBar {
-                    EmptyView()
-                } else if Theme.glass {
-                    // Glass bar: tiles are lightly tinted panes on the glass.
-                    shape.fill(Theme.tile.opacity(0.18 + (store.settings.glassTint ?? 0.18) * 0.8))
-                        .overlay(shape.strokeBorder(Color.white.opacity(0.16), lineWidth: 0.75))
-                } else {
-                    shape.fill(Theme.tile)
-                }
+        Group {
+            if instance.kind.hugsIcon {
+                tile
+            } else {
+                tile
+                    .modifier(TileGlass(shape: shape, on: Theme.glass && !store.settings.showBar,
+                                        tint: Theme.tile.opacity((store.settings.glassTint ?? 0.18) + 0.05)))
+                    .background {
+                        if Theme.glass && !store.settings.showBar {
+                            EmptyView()
+                        } else if Theme.glass {
+                            shape.fill(Theme.tile.opacity(0.18 + (store.settings.glassTint ?? 0.18) * 0.8))
+                                .overlay(shape.strokeBorder(Color.white.opacity(0.16), lineWidth: 0.75))
+                        } else {
+                            shape.fill(Theme.tile)
+                        }
+                    }
+                    .clipShape(shape)
             }
-            .clipShape(shape)
-            .hoverUnroll(
+        }
+        .hoverUnroll(
                 id: instance.id,
                 width: instance.kind == .weather ? 380 : 300,
                 enabled: instance.cfg("unrollEnabled", "1") != "0" && hoverContent != nil
@@ -849,7 +856,7 @@ struct Sparkline: Shape {
 }
 
 extension View {
-    func tilePadding(_ s: CGFloat) -> some View { padding(.horizontal, 10 * s).padding(.vertical, 8 * s) }
+    func tilePadding(_ s: CGFloat) -> some View { padding(.horizontal, 6 * s).padding(.vertical, 4 * s) }
 }
 
 func fileIcon(_ path: String) -> NSImage { NSWorkspace.shared.icon(forFile: path) }
