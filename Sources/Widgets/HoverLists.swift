@@ -93,9 +93,18 @@ struct FolderHoverList: View {
     }
 }
 
+private struct FinderVolume: Identifiable {
+    let url: URL
+    let name: String
+    let symbol: String
+    let ejectable: Bool
+    var id: String { url.path }
+}
+
 struct FinderHoverList: View {
     let w: WidgetInstance
     @State private var recent: [URL] = []
+    @State private var volumes: [FinderVolume] = []
 
     private var recentLimit: Int { min(max(Int(w.cfg("fileCount", "10")) ?? 10, 1), 50) }
 
@@ -169,6 +178,32 @@ struct FinderHoverList: View {
                 .padding(.horizontal, 12)
             }
 
+            if !volumes.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("GERÄTE").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                    ForEach(volumes) { volume in
+                        HStack(spacing: 6) {
+                            Button { open(volume.url.path) } label: {
+                                Label(volume.name, systemImage: volume.symbol)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            if volume.ejectable {
+                                Button {
+                                    try? NSWorkspace.shared.unmountAndEjectDevice(at: volume.url)
+                                } label: {
+                                    Image(systemName: "eject")
+                                }
+                                .buttonStyle(.plain)
+                                .help("\(volume.name) auswerfen")
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+
             if !recent.isEmpty {
                 Divider()
                 VStack(alignment: .leading, spacing: 4) {
@@ -185,10 +220,47 @@ struct FinderHoverList: View {
             }
         }
         .onAppear {
+            volumes = Self.mountedVolumes()
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = AppLauncher.recentDocuments(bundleID: "com.apple.finder", limit: recentLimit)
                 DispatchQueue.main.async { recent = result }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWorkspace.didMountNotification)) { _ in
+            volumes = Self.mountedVolumes()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWorkspace.didUnmountNotification)) { _ in
+            volumes = Self.mountedVolumes()
+        }
+    }
+
+    private static func mountedVolumes() -> [FinderVolume] {
+        let keys: Set<URLResourceKey> = [
+            .volumeLocalizedNameKey, .volumeNameKey, .volumeIsInternalKey,
+            .volumeIsRemovableKey, .volumeIsEjectableKey, .volumeIsLocalKey
+        ]
+        let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: Array(keys), options: [.skipHiddenVolumes]) ?? []
+        return urls.compactMap { url in
+            let values = try? url.resourceValues(forKeys: keys)
+            let name = values?.volumeLocalizedName ?? values?.volumeName ?? url.lastPathComponent
+            guard !name.isEmpty else { return nil }
+            let symbol: String
+            if values?.volumeIsLocal == false {
+                symbol = "externaldrive.connected.to.line.below"
+            } else if values?.volumeIsInternal == true {
+                symbol = "internaldrive"
+            } else if values?.volumeIsRemovable == true {
+                symbol = "externaldrive"
+            } else {
+                symbol = "externaldrive.fill"
+            }
+            return FinderVolume(url: url, name: name, symbol: symbol, ejectable: values?.volumeIsEjectable == true)
+        }
+        .sorted {
+            let lhsInternal = $0.symbol == "internaldrive"
+            let rhsInternal = $1.symbol == "internaldrive"
+            if lhsInternal != rhsInternal { return lhsInternal }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
     }
 
@@ -770,6 +842,7 @@ struct LauncherHoverList: View {
 
     private var appPath: String { app }
     private var itemCount: Int { w.fileCount(for: app) }
+    private var historyLimit: Int { min(max(itemCount, 15), 40) }
     private var pinned: [String] { DockStore.shared.instance(w.id)?.pinnedFiles(for: app) ?? w.pinnedFiles(for: app) }
     private var appName: String { FileManager.default.displayName(atPath: appPath).replacingOccurrences(of: ".app", with: "") }
     private var browserBundleID: String? {
@@ -826,18 +899,18 @@ struct LauncherHoverList: View {
                             ForEach(safari.bar.filter { !$0.isFolder }.prefix(itemCount)) { node in
                                 BookmarkMenuItem(node: node)
                             }
-                        } else if browserBundleID != "com.apple.Safari" || w.cfg("safariView", "history") != "favorites" {
-                            Text(browserBundleID == "com.apple.Safari" ? "SAFARI-VERLAUF" : "FIREFOX-VERLAUF")
-                                .font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
-                            if !loaded {
-                                ProgressView().controlSize(.small)
-                            } else if browserHistory.isEmpty {
-                                Text(browserHistoryError ?? "Kein Browserverlauf gefunden.")
-                                    .font(.callout).foregroundStyle(Theme.secondary)
-                            }
-                            ForEach(browserHistory.prefix(itemCount)) { visit in
-                                browserRow(visit)
-                            }
+                            Divider()
+                        }
+                        Text(browserBundleID == "com.apple.Safari" ? "SAFARI-VERLAUF" : "FIREFOX-VERLAUF")
+                            .font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                        if !loaded {
+                            ProgressView().controlSize(.small)
+                        } else if browserHistory.isEmpty {
+                            Text(browserHistoryError ?? "Kein Browserverlauf gefunden.")
+                                .font(.callout).foregroundStyle(Theme.secondary)
+                        }
+                        ForEach(browserHistory.prefix(historyLimit)) { visit in
+                            browserRow(visit)
                         }
                         Divider()
                     }
@@ -847,8 +920,7 @@ struct LauncherHoverList: View {
                     } else if recent.isEmpty {
                         Text("Keine zuletzt verwendeten Dokumente").font(.callout).foregroundStyle(Theme.secondary)
                     }
-                    let pinnedCount = min(pinned.count, itemCount)
-                    ForEach(recent.map(\.path).filter { !pinned.contains($0) }.prefix(max(0, itemCount - pinnedCount)), id: \.self) {
+                    ForEach(recent.map(\.path).filter { !pinned.contains($0) }.prefix(itemCount), id: \.self) {
                         row($0, pinnedRow: false)
                     }
                 }
@@ -862,11 +934,14 @@ struct LauncherHoverList: View {
 
     private func load() {
         guard let bid = Bundle(path: appPath)?.bundleIdentifier else { loaded = true; return }
+        let historyLimit = historyLimit
+        let recentLimit = itemCount
+        let browserID = browserBundleID
         DispatchQueue.global(qos: .userInitiated).async {
-            let r = AppLauncher.recentDocuments(bundleID: bid, limit: itemCount)
+            let r = AppLauncher.recentDocuments(bundleID: bid, limit: recentLimit)
             let history: (visits: [BrowserVisit], error: String?)?
-            if let browserBundleID, browserBundleID != "com.apple.Safari" || w.cfg("safariView", "history") != "favorites" {
-                history = BrowserHistory.load(bundleID: browserBundleID, limit: itemCount)
+            if let browserID {
+                history = BrowserHistory.load(bundleID: browserID, limit: historyLimit)
             } else {
                 history = nil
             }

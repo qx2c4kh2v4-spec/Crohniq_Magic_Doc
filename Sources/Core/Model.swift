@@ -862,19 +862,19 @@ final class DockStore: ObservableObject {
         return (CGFloat(count) * 22 + CGFloat(max(0, count - 1)) * 3 + 6) * scale
     }
 
-    /// Open apps sit to the right of the workspace symbols at half that size (11 pt).
+    /// Open apps sit to the right of the workspace symbols, at the same 22 pt size.
     var runningAppsHeaderWidth: CGFloat {
         guard !WorkspaceManager.shared.workspaces.isEmpty else { return 0 }
         let count = RunningApps.shared.apps.count
         guard count > 0 else { return 0 }
         let scale = unit / 64
         let shown = min(count, 12)
-        let icons = CGFloat(shown) * 11 + CGFloat(max(0, shown - 1)) * 3
-        return (icons + 4 + 34 + 8) * scale
+        let icons = CGFloat(shown) * 22 + CGFloat(max(0, shown - 1)) * 4
+        return (icons + 6 + 34 + 8) * scale
     }
 
-    var profileHeaderWidth: CGFloat {
-        let scale = unit / 64
+    /// Workspace symbols, open apps and profiles, without the identity badge.
+    var headerClusterWidth: CGFloat {
         var sum: CGFloat = 0
         var parts = 0
         func add(_ width: CGFloat) {
@@ -885,9 +885,14 @@ final class DockStore: ObservableObject {
         add(workspaceSymbolStripWidth)
         add(runningAppsHeaderWidth)
         if !profiles.isEmpty { add(profileStripWidth) }
-        add(172 * scale)
-        // The header HStack also leaves a flexible spacer, so there is one gap per fixed part.
-        return max(dockRowSize.width, sum + CGFloat(parts) * gap)
+        if parts > 1 { sum += CGFloat(parts - 1) * gap }
+        return sum
+    }
+
+    var profileHeaderWidth: CGFloat {
+        let badge = 172 * unit / 64
+        // Equal side margins keep the cluster centered while the badge stays at the trailing edge.
+        return max(dockRowSize.width, headerClusterWidth + (badge + gap) * 2)
     }
 
     var contentSize: CGSize {

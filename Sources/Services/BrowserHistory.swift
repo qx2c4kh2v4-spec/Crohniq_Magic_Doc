@@ -18,15 +18,21 @@ enum BrowserHistory {
             database = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Safari/History.db")
             query = """
-            SELECT hi.url AS url, COALESCE(hi.title, hi.url) AS title,
-                   MAX(hv.visit_time) + 978307200 AS visitedAt
+            SELECT hi.url AS url,
+                   COALESCE(NULLIF(latest.title, ''), hi.url) AS title,
+                   latest.visit_time + 978307200 AS visitedAt
             FROM history_items hi
-            LEFT JOIN history_visits hv ON hv.history_item = hi.id
-            GROUP BY hi.id
-            ORDER BY MAX(hv.visit_time) DESC
+            JOIN history_visits latest ON latest.id = (
+                SELECT hv.id FROM history_visits hv
+                WHERE hv.history_item = hi.id
+                ORDER BY hv.visit_time DESC
+                LIMIT 1
+            )
+            WHERE hi.url NOT LIKE 'blob:%'
+            ORDER BY latest.visit_time DESC
             LIMIT \(rowLimit);
             """
-        case "org.mozilla.firefox":
+        case let id where id.hasPrefix("org.mozilla.firefox"):
             guard let profile = firefoxProfile() else {
                 return ([], "Kein Firefox-Profil gefunden.")
             }
@@ -49,10 +55,15 @@ enum BrowserHistory {
         guard FileManager.default.isExecutableFile(atPath: "/usr/bin/sqlite3") else {
             return ([], "Das macOS-Werkzeug sqlite3 ist nicht verfügbar.")
         }
+        guard let snapshot = snapshotDatabase(database) else {
+            let name = bundleID == "com.apple.Safari" ? "Safari" : "Firefox"
+            return ([], "\(name)-Verlauf ist gesperrt. Festplattenvollzugriff für Crohniq Dock erlauben.")
+        }
+        defer { try? FileManager.default.removeItem(at: snapshot.deletingLastPathComponent()) }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = ["-readonly", "-json", database.path, query]
+        process.arguments = ["-readonly", "-json", snapshot.path, query]
         let output = Pipe()
         let errorOutput = Pipe()
         process.standardOutput = output
@@ -67,6 +78,7 @@ enum BrowserHistory {
                 let detail = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 return ([], detail?.isEmpty == false ? detail : "Browserverlauf kann nicht gelesen werden.")
             }
+            if data.isEmpty { return ([], nil) }
 
             let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
             let visits = rows.compactMap { row -> BrowserVisit? in
@@ -78,6 +90,25 @@ enum BrowserHistory {
             return (visits, nil)
         } catch {
             return ([], error.localizedDescription)
+        }
+    }
+
+    /// Copies the database plus its write-ahead log so a running browser does not block the read.
+    private static func snapshotDatabase(_ database: URL) -> URL? {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("crohniq-history-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let destination = folder.appendingPathComponent(database.lastPathComponent)
+            try FileManager.default.copyItem(at: database, to: destination)
+            for suffix in ["-wal", "-shm"] {
+                let source = URL(fileURLWithPath: database.path + suffix)
+                guard FileManager.default.fileExists(atPath: source.path) else { continue }
+                try? FileManager.default.copyItem(at: source, to: URL(fileURLWithPath: destination.path + suffix))
+            }
+            return destination
+        } catch {
+            return nil
         }
     }
 

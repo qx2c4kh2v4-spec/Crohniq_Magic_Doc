@@ -67,36 +67,70 @@ enum AppLauncher {
     }
 
     /// Recent documents macOS keeps per app (e.g. Xcode projects, Pages files).
+    /// Finder has no per-app list; its toolbar uses the system-wide Recent Documents list.
     static func recentDocuments(bundleID: String, limit: Int = 12) -> [URL] {
         let base = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments")
-        let candidates = ["sfl4", "sfl3", "sfl2"].map { base.appendingPathComponent("\(bundleID.lowercased()).\($0)") }
-        guard let file = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
-              let data = try? Data(contentsOf: file) else { return [] }
-        let root: Any?
-        if let r = try? NSKeyedUnarchiver.unarchivedObject(
-            ofClasses: [NSDictionary.self, NSArray.self, NSString.self, NSData.self, NSNumber.self, NSUUID.self, NSDate.self],
-            from: data) {
-            root = r
-        } else if let u = try? NSKeyedUnarchiver(forReadingFrom: data) {
-            u.requiresSecureCoding = false
-            root = u.decodeObject(forKey: NSKeyedArchiveRootObjectKey)
+            .appendingPathComponent("Library/Application Support/com.apple.sharedfilelist")
+        let files: [URL]
+        if bundleID == "com.apple.finder" {
+            files = ["sfl4", "sfl3", "sfl2"].map {
+                base.appendingPathComponent("com.apple.LSSharedFileList.RecentDocuments.\($0)")
+            }
         } else {
-            root = nil
+            let dir = base.appendingPathComponent("com.apple.LSSharedFileList.ApplicationRecentDocuments")
+            files = ["sfl4", "sfl3", "sfl2"].map { dir.appendingPathComponent("\(bundleID.lowercased()).\($0)") }
         }
-        guard let dict = root as? [String: Any], let items = dict["items"] as? [[String: Any]] else { return [] }
+        guard let file = files.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
+              let data = try? Data(contentsOf: file) else { return [] }
+        guard let items = sharedFileListItems(in: data) else { return [] }
         var result: [URL] = []
         for item in items {
             guard let bm = item["Bookmark"] as? Data else { continue }
             var stale = false
-            if let url = try? URL(resolvingBookmarkData: bm, options: [.withoutUI, .withoutMounting], bookmarkDataIsStale: &stale),
-               FileManager.default.fileExists(atPath: url.path), !result.contains(url),
-               bundleID != "com.apple.dt.Xcode" || xcodeProjectExtensions.contains(url.pathExtension.lowercased()) {
-                result.append(url)
-                if result.count >= limit { break }
-            }
+            guard let url = try? URL(resolvingBookmarkData: bm, options: [.withoutUI, .withoutMounting], bookmarkDataIsStale: &stale),
+                  FileManager.default.fileExists(atPath: url.path),
+                  !result.contains(url) else { continue }
+            if bundleID == "com.apple.dt.Xcode", !xcodeProjectExtensions.contains(url.pathExtension.lowercased()) { continue }
+            result.append(url)
+            if result.count >= limit { break }
         }
         return result
+    }
+
+    private static func sharedFileListItems(in data: Data) -> [[String: Any]]? {
+        let root: Any?
+        if let decoded = try? NSKeyedUnarchiver.unarchivedObject(
+            ofClasses: [NSDictionary.self, NSArray.self, NSString.self, NSData.self, NSNumber.self, NSUUID.self, NSDate.self],
+            from: data) {
+            root = decoded
+        } else if let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: data) {
+            unarchiver.requiresSecureCoding = false
+            root = unarchiver.decodeObject(forKey: NSKeyedArchiveRootObjectKey)
+        } else {
+            root = nil
+        }
+        let items: Any?
+        if let dict = root as? [String: Any] {
+            items = dict["items"]
+        } else if let dict = root as? NSDictionary {
+            items = dict["items"]
+        } else {
+            items = nil
+        }
+        if let list = items as? [[String: Any]] { return list }
+        if let list = items as? NSArray {
+            return list.compactMap { entry in
+                if let dict = entry as? [String: Any] { return dict }
+                guard let dict = entry as? NSDictionary else { return nil }
+                var bridged: [String: Any] = [:]
+                for (key, value) in dict {
+                    guard let key = key as? String else { continue }
+                    bridged[key] = value
+                }
+                return bridged
+            }
+        }
+        return nil
     }
 }
 

@@ -340,7 +340,18 @@ struct WidgetSettings: View {
         HSplitView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Profil „\(store.profiles[store.activeIndex].name)“").font(.headline)
+                    Picker("Profil", selection: Binding(
+                        get: { store.activeProfileID },
+                        set: { store.switchProfile($0) }
+                    )) {
+                        ForEach(store.profiles) { profile in
+                            Text(profile.name).tag(profile.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .font(.headline)
+                    .fixedSize()
+                    .help("Profil wechseln")
                     Spacer()
                     Button {
                         SettingsNav.shared.page = .gallery

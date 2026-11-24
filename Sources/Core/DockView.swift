@@ -62,21 +62,25 @@ struct DockView: View {
 
     @ViewBuilder
     private func profileHeader(s: CGFloat) -> some View {
-        HStack(spacing: store.gap) {
-            if !workspaceManager.workspaces.isEmpty {
-                WorkspaceSymbolStrip()
-                    .frame(width: store.workspaceSymbolStripWidth, height: store.profileStripHeight)
-                if !runningApps.apps.isEmpty {
-                    RunningAppsHeader()
-                        .frame(width: store.runningAppsHeaderWidth, height: store.profileStripHeight)
+        ZStack {
+            HStack(spacing: store.gap) {
+                Spacer(minLength: 0)
+                if !workspaceManager.workspaces.isEmpty {
+                    WorkspaceSymbolStrip()
+                        .frame(width: store.workspaceSymbolStripWidth, height: store.profileStripHeight)
+                    if !runningApps.apps.isEmpty {
+                        RunningAppsHeader()
+                            .frame(width: store.runningAppsHeaderWidth, height: store.profileStripHeight)
+                    }
                 }
+                if !store.profiles.isEmpty {
+                    ProfileSwitcher()
+                        .frame(width: store.profileStripWidth, height: store.profileStripHeight)
+                }
+                Spacer(minLength: 0)
             }
-            if !store.profiles.isEmpty {
-                ProfileSwitcher()
-                    .frame(width: store.profileStripWidth, height: store.profileStripHeight)
-            }
-            Spacer(minLength: 0)
             AppIdentityBadge(scale: s)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(width: store.contentSize.width - store.barPadding * 2,
                height: store.profileStripHeight)
@@ -122,7 +126,7 @@ private struct WorkspaceSymbolStrip: View {
     }
 }
 
-/// Running apps at half the workspace-symbol size, immediately to their right.
+/// Running apps beside the workspace symbols, at the same symbol size.
 private struct RunningAppsHeader: View {
     @ObservedObject private var running = RunningApps.shared
     @Environment(\.dockScale) private var s
@@ -130,10 +134,10 @@ private struct RunningAppsHeader: View {
     var body: some View {
         let count = running.apps.count
         let shown = min(count, 12)
-        let iconWidth = (CGFloat(shown) * 11 + CGFloat(max(0, shown - 1)) * 3) * s
-        HStack(spacing: 4 * s) {
+        let iconWidth = (CGFloat(shown) * 22 + CGFloat(max(0, shown - 1)) * 4) * s
+        HStack(spacing: 6 * s) {
             ScrollView(.horizontal) {
-                HStack(spacing: 3 * s) {
+                HStack(spacing: 4 * s) {
                     ForEach(running.apps, id: \.processIdentifier) { app in
                         Menu {
                             Button("Beenden") { running.quit([app], force: false) }
@@ -141,7 +145,7 @@ private struct RunningAppsHeader: View {
                         } label: {
                             Image(nsImage: app.icon ?? NSImage())
                                 .resizable()
-                                .frame(width: 11 * s, height: 11 * s)
+                                .frame(width: 22 * s, height: 22 * s)
                         }
                         .menuStyle(.button)
                         .buttonStyle(.plain)
