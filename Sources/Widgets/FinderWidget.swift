@@ -26,9 +26,10 @@ struct FinderWidget: View {
     var body: some View {
         HStack(spacing: 8 * s) {
             Button { open(home) } label: {
+                let icon = (w.isAppIcon ? DockStore.launcherIcon(size: 1, showsName: false) : 36) * s
                 Image(nsImage: NSWorkspace.shared.icon(forFile: finderPath))
                     .resizable()
-                    .frame(width: 36 * s, height: 36 * s)
+                    .frame(width: icon, height: icon)
             }
             .buttonStyle(.plain)
             .help("Finder öffnen")
@@ -47,7 +48,7 @@ struct FinderWidget: View {
                 }
             }
         }
-        .tilePadding(s)
+        .modifier(TilePaddingUnlessIcon(isIcon: w.isAppIcon, s: s))
         .onWidgetAction(w.id) { action in
             if action == "open" { open(home) }
         }

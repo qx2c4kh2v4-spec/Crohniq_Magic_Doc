@@ -322,7 +322,7 @@ struct AppsWidget: View {
         let items = paths
         let capacity = w.size == 1 ? 4 : w.size * 2 + (w.size - 1)
         let shown = Array(items.prefix(capacity))
-        let iconSize: CGFloat = (w.size == 1 ? 22 : 26) * s
+        let iconSize: CGFloat = DockStore.gridIcon * s
         let columns = shown.isEmpty ? 1 : (w.size == 1 ? min(2, shown.count) : max(1, Int(ceil(Double(shown.count) / 2))))
         let rows = shown.isEmpty ? 1 : Int(ceil(Double(shown.count) / Double(columns)))
         Grid(horizontalSpacing: 3 * s, verticalSpacing: 3 * s) {
@@ -491,43 +491,40 @@ struct TrashWidget: View {
     @State private var targeted = false
     @State private var trashCount = 0
     @State private var status = ""
+    private let tick = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 2 * s) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: targeted ? "trash.fill" : "trash")
-                        .font(.system(size: 24 * s, weight: .semibold))
-                        .foregroundStyle(targeted ? Color.accentColor : Theme.fg)
-                    if trashCount > 0 {
-                        Text(trashCount > 99 ? "99+" : "\(trashCount)")
-                            .font(.system(size: 7 * s, weight: .bold))
-                            .monospacedDigit()
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 3 * s)
-                            .frame(minWidth: 12 * s, minHeight: 12 * s)
-                            .background(Capsule().fill(Color.red))
-                            .offset(x: 7 * s, y: -5 * s)
-                    }
+        VStack(spacing: 2 * s) {
+            ZStack(alignment: .topTrailing) {
+                GoldTrashCan(full: trashCount > 0, targeted: targeted)
+                    .frame(width: (w.size > 1 ? 32 : 38) * s, height: (w.size > 1 ? 38 : 46) * s)
+                    .scaleEffect(targeted ? 1.1 : 1, anchor: .bottom)
+                    .shadow(color: Color(red: 1, green: 0.8, blue: 0.3).opacity(targeted ? 0.8 : 0), radius: 10 * s)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: targeted)
+                    .animation(.easeInOut(duration: 0.3), value: trashCount > 0)
+                if trashCount > 0 {
+                    Text(trashCount > 99 ? "99+" : "\(trashCount)")
+                        .font(.system(size: 7 * s, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 3 * s)
+                        .frame(minWidth: 12 * s, minHeight: 12 * s)
+                        .background(Capsule().fill(Color.red).shadow(color: .black.opacity(0.3), radius: 1, y: 0.5))
+                        .offset(x: 5 * s, y: -3 * s)
                 }
-                if w.size > 1 {
-                    Text(status.isEmpty ? "Papierkorb" : status)
-                        .font(.system(size: 8 * s, weight: .medium))
-                        .foregroundStyle(Theme.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
+            }
+            if w.size > 1 {
+                Text(status.isEmpty ? "Papierkorb" : status)
+                    .font(.system(size: 8 * s, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .overlay {
-            if targeted {
-                RoundedRectangle(cornerRadius: 12 * s)
-                    .strokeBorder(Color.accentColor, lineWidth: 2 * s)
-            }
-        }
         .tilePadding(s)
+        .help(trashCount == 0 ? "Papierkorb (leer)" : "Papierkorb – \(trashCount) Objekte")
         .onTapGesture {
             Script.run("tell application \"Finder\" to open trash") { _ in }
         }
@@ -552,17 +549,167 @@ struct TrashWidget: View {
             return true
         }
         .onAppear { refreshCount() }
+        .onReceive(tick) { _ in refreshCount() }
         .contextMenu {
             Button("Papierkorb öffnen") {
                 Script.run("tell application \"Finder\" to open trash") { _ in }
             }
-            Button("Aktualisieren") { refreshCount() }
+            Button("Papierkorb entleeren …") {
+                let alert = NSAlert()
+                alert.messageText = "Papierkorb endgültig entleeren?"
+                alert.informativeText = "\(trashCount) Objekte werden unwiderruflich gelöscht."
+                alert.addButton(withTitle: "Entleeren")
+                alert.addButton(withTitle: "Abbrechen")
+                alert.buttons.first?.hasDestructiveAction = true
+                NSApp.activate(ignoringOtherApps: true)
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                Script.run("tell application \"Finder\" to empty trash") { _ in refreshCount() }
+            }
+            .disabled(trashCount == 0)
         }
     }
 
     private func refreshCount() {
         let trash = NSHomeDirectory() + "/.Trash"
-        trashCount = (try? FileManager.default.contentsOfDirectory(atPath: trash).count) ?? 0
+        let items = (try? FileManager.default.contentsOfDirectory(atPath: trash)) ?? []
+        let count = items.filter { $0 != ".DS_Store" }.count
+        if count != trashCount { trashCount = count }
+    }
+}
+
+/// A perforated metal bin in polished gold; crumpled paper peeks out when it holds something.
+struct GoldTrashCan: View {
+    let full: Bool
+    let targeted: Bool
+
+    private static let gold = Gradient(stops: [
+        .init(color: Color(red: 0.36, green: 0.25, blue: 0.05), location: 0),
+        .init(color: Color(red: 0.72, green: 0.52, blue: 0.14), location: 0.12),
+        .init(color: Color(red: 0.98, green: 0.88, blue: 0.52), location: 0.32),
+        .init(color: Color(red: 1.0, green: 0.96, blue: 0.78), location: 0.38),
+        .init(color: Color(red: 0.88, green: 0.68, blue: 0.24), location: 0.55),
+        .init(color: Color(red: 0.66, green: 0.46, blue: 0.11), location: 0.8),
+        .init(color: Color(red: 0.32, green: 0.22, blue: 0.04), location: 1),
+    ])
+
+    var body: some View {
+        Canvas { ctx, size in
+            let W = size.width, H = size.height, cx = W / 2
+            let topY = H * 0.17, rx = W * 0.47, ry = H * 0.085
+            let botY = H * 0.92, rxb = W * 0.36, ryb = H * 0.06
+
+            func ellipse(_ y: CGFloat, _ a: CGFloat, _ b: CGFloat) -> CGRect {
+                CGRect(x: cx - a, y: y - b, width: 2 * a, height: 2 * b)
+            }
+            func frontArc(_ p: inout Path, y: CGFloat, a: CGFloat, b: CGFloat, leftToRight: Bool) {
+                for i in 0...24 {
+                    let t = CGFloat(i) / 24
+                    let th = leftToRight ? .pi * (1 - t) : .pi * t
+                    p.addLine(to: CGPoint(x: cx + a * cos(th), y: y + b * sin(th)))
+                }
+            }
+
+            // Ground shadow
+            ctx.drawLayer { l in
+                l.addFilter(.blur(radius: H * 0.03))
+                l.fill(Path(ellipseIn: ellipse(botY + H * 0.02, rxb * 1.15, ryb * 0.9)), with: .color(.black.opacity(0.35)))
+            }
+
+            // Opening (dark inside)
+            ctx.fill(Path(ellipseIn: ellipse(topY, rx, ry)),
+                     with: .linearGradient(Gradient(colors: [Color(red: 0.12, green: 0.08, blue: 0.01), Color(red: 0.3, green: 0.21, blue: 0.05)]),
+                                           startPoint: CGPoint(x: cx, y: topY - ry), endPoint: CGPoint(x: cx, y: topY + ry)))
+
+            // Rolled rim, back half (the paper sits in front of it)
+            let rim = Path(ellipseIn: ellipse(topY, rx, ry))
+            let goldAcross = GraphicsContext.Shading.linearGradient(Self.gold, startPoint: CGPoint(x: cx - rx, y: 0), endPoint: CGPoint(x: cx + rx, y: 0))
+            ctx.stroke(rim, with: goldAcross, lineWidth: H * 0.055)
+
+            // Crumpled paper
+            if full {
+                let blobs: [(CGFloat, CGFloat, CGFloat)] = [(-0.17, -0.02, 0.17), (0.15, -0.05, 0.16), (0.0, -0.1, 0.19)]
+                for (k, b) in blobs.enumerated() {
+                    let c = CGPoint(x: cx + b.0 * W, y: topY + b.1 * H)
+                    let r = b.2 * W
+                    var p = Path()
+                    for i in 0..<11 {
+                        let a = CGFloat(i) / 11 * 2 * .pi
+                        let wobble = 0.78 + 0.22 * abs(sin(CGFloat(i * 7 + k * 3)))
+                        let pt = CGPoint(x: c.x + r * wobble * cos(a), y: c.y + r * 0.85 * wobble * sin(a))
+                        if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+                    }
+                    p.closeSubpath()
+                    ctx.fill(p, with: .linearGradient(Gradient(colors: [.white, Color(white: 0.8)]),
+                                                     startPoint: CGPoint(x: c.x - r, y: c.y - r), endPoint: CGPoint(x: c.x + r, y: c.y + r)))
+                    var crease = Path()
+                    crease.move(to: CGPoint(x: c.x - r * 0.5, y: c.y - r * 0.2))
+                    crease.addLine(to: CGPoint(x: c.x + r * 0.1, y: c.y + r * 0.1))
+                    crease.addLine(to: CGPoint(x: c.x + r * 0.45, y: c.y - r * 0.35))
+                    ctx.stroke(crease, with: .color(.black.opacity(0.18)), lineWidth: max(0.5, W * 0.012))
+                    ctx.stroke(p, with: .color(.black.opacity(0.12)), lineWidth: max(0.5, W * 0.01))
+                }
+            }
+
+            // Body
+            var body = Path()
+            body.move(to: CGPoint(x: cx - rx, y: topY))
+            body.addLine(to: CGPoint(x: cx - rxb, y: botY))
+            frontArc(&body, y: botY, a: rxb, b: ryb, leftToRight: true)
+            body.addLine(to: CGPoint(x: cx + rx, y: topY))
+            frontArc(&body, y: topY, a: rx, b: ry, leftToRight: false)
+            body.closeSubpath()
+            ctx.fill(body, with: .linearGradient(Self.gold, startPoint: CGPoint(x: cx - rx, y: 0), endPoint: CGPoint(x: cx + rx, y: 0)))
+
+            // Perforations, foreshortened around the cylinder
+            ctx.drawLayer { l in
+                l.clip(to: body)
+                let rows = 7
+                for row in 0..<rows {
+                    let v = (CGFloat(row) + 0.9) / CGFloat(rows + 1)
+                    let y0 = topY + (botY - topY) * v
+                    let r = rx + (rxb - rx) * v
+                    let ryv = ry + (ryb - ry) * v
+                    let shift = row.isMultiple(of: 2) ? 0.0 : 0.5
+                    for col in -5...5 {
+                        let phi = (CGFloat(col) + CGFloat(shift)) * (.pi / 11)
+                        guard abs(phi) < 1.35 else { continue }
+                        let x = cx + r * sin(phi)
+                        let y = y0 + ryv * cos(phi)
+                        let hw = W * 0.032 * cos(phi), hh = H * 0.028
+                        let hole = CGRect(x: x - hw, y: y - hh, width: 2 * hw, height: 2 * hh)
+                        l.fill(Path(ellipseIn: hole.offsetBy(dx: 0, dy: hh * 0.35)), with: .color(Color(red: 1, green: 0.93, blue: 0.65).opacity(0.45)))
+                        l.fill(Path(ellipseIn: hole), with: .color(Color(red: 0.22, green: 0.14, blue: 0.02).opacity(0.75)))
+                    }
+                }
+                // Vertical sheen
+                l.fill(Path(CGRect(x: cx - rx * 0.42, y: topY, width: rx * 0.14, height: botY - topY)),
+                       with: .linearGradient(Gradient(colors: [.white.opacity(0), .white.opacity(0.35), .white.opacity(0)]),
+                                             startPoint: CGPoint(x: cx - rx * 0.42, y: 0), endPoint: CGPoint(x: cx - rx * 0.28, y: 0)))
+            }
+
+            // Foot band
+            var foot = Path()
+            foot.move(to: CGPoint(x: cx - rxb * 1.02, y: botY - H * 0.035))
+            frontArc(&foot, y: botY - H * 0.035, a: rxb * 1.02, b: ryb, leftToRight: true)
+            ctx.stroke(foot, with: .linearGradient(Self.gold, startPoint: CGPoint(x: cx - rxb, y: 0), endPoint: CGPoint(x: cx + rxb, y: 0)),
+                       lineWidth: H * 0.05)
+            ctx.stroke(body, with: .color(Color(red: 0.3, green: 0.2, blue: 0.03).opacity(0.6)), lineWidth: max(0.5, W * 0.012))
+
+            // Rolled rim, front half
+            var front = Path()
+            front.move(to: CGPoint(x: cx - rx, y: topY))
+            frontArc(&front, y: topY, a: rx, b: ry, leftToRight: true)
+            ctx.stroke(front, with: goldAcross, style: StrokeStyle(lineWidth: H * 0.055, lineCap: .round))
+            var gleam = Path()
+            gleam.move(to: CGPoint(x: cx - rx * 0.97, y: topY - H * 0.012))
+            frontArc(&gleam, y: topY - H * 0.012, a: rx * 0.97, b: ry * 0.85, leftToRight: true)
+            ctx.stroke(gleam, with: .color(.white.opacity(targeted ? 0.85 : 0.55)), lineWidth: max(0.5, H * 0.012))
+            if !full {
+                var back = Path()
+                back.addEllipse(in: ellipse(topY - H * 0.012, rx * 0.97, ry * 0.85))
+                ctx.stroke(back, with: .color(.white.opacity(0.25)), lineWidth: max(0.5, H * 0.01))
+            }
+        }
     }
 }
 

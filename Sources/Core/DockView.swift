@@ -13,13 +13,21 @@ struct DockView: View {
         let s = store.unit / 64
         let palette = themeState.palette
         let visibleWidgets = store.widgets(for: workspaceManager.activeID)
-        let barShape = RoundedRectangle(cornerRadius: store.corner + store.barPadding, style: .continuous)
+        // The bar follows its content: a band for the tiles and a raised tab only where the header sits.
+        let barShape = DockOutline(
+            tabWidth: store.showsHeader && !store.vertical ? store.headerTabWidth : nil,
+            bodyInset: store.profileStripHeight + store.headerGap,
+            corner: store.corner + store.barPadding,
+            flipped: store.settings.position == .top
+        )
         let layout = store.vertical
             ? AnyLayout(VStackLayout(alignment: store.settings.position == .right ? .trailing : .leading, spacing: store.gap))
             : AnyLayout(HStackLayout(spacing: store.gap))
-        VStack(spacing: store.showsHeader ? store.gap : 0) {
-            if store.showsHeader, store.settings.position == .bottom {
-                profileHeader(s: s)
+        // Tiles sit at the screen edge, the header (workspaces, apps, profiles) on the side facing the screen.
+        let headerBelow = store.settings.position == .top
+        VStack(spacing: store.showsHeader ? store.headerGap : 0) {
+            if store.showsHeader, !headerBelow {
+                profileHeader(s: store.dockScale)
             }
             layout {
                 DockGrip(vertical: store.vertical)
@@ -38,13 +46,18 @@ struct DockView: View {
                         .opacity(dragging == w.id ? 0.4 : 1)
                         .onDrag {
                             dragging = w.id
-                            return NSItemProvider(object: ("crohniq-dock-widget:" + w.id.uuidString) as NSString)
+                            let binding = $dragging
+                            WidgetDragOut.begin(w.id) { binding.wrappedValue = nil }
+                            // Only this app sees the payload, so Finder or other apps cannot take it as text.
+                            let provider = NSItemProvider()
+                            provider.registerObject(("crohniq-dock-widget:" + w.id.uuidString) as NSString, visibility: .ownProcess)
+                            return provider
                         }
                         .onDrop(of: [.text], delegate: ReorderDrop(target: w.id, dragging: $dragging))
                 }
             }
-            if store.showsHeader, store.settings.position != .bottom {
-                profileHeader(s: s)
+            if store.showsHeader, headerBelow {
+                profileHeader(s: store.dockScale)
             }
         }
         .onDrop(of: [.text], isTargeted: nil) { addCatalogWidget(from: $0) }
@@ -63,8 +76,7 @@ struct DockView: View {
 
     @ViewBuilder
     private func profileHeader(s: CGFloat) -> some View {
-        ZStack {
-            HStack(spacing: store.gap) {
+        HStack(spacing: store.gap) {
                 Spacer(minLength: 0)
                 if !workspaceManager.workspaces.isEmpty {
                     WorkspaceSymbolStrip()
@@ -78,13 +90,13 @@ struct DockView: View {
                     ProfileSwitcher()
                         .frame(width: store.profileStripWidth, height: store.profileStripHeight)
                 }
+                AppIdentityBadge(scale: s)
                 Spacer(minLength: 0)
-            }
-            AppIdentityBadge(scale: s)
-                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(width: store.contentSize.width - store.barPadding * 2,
                height: store.profileStripHeight)
+        // The header follows the dock size; the tiles use the widget size.
+        .environment(\.dockScale, s)
     }
 }
 
@@ -100,12 +112,12 @@ private struct WorkspaceSymbolStrip: View {
                 let active = mgr.activeID == ws.id
                 Button { mgr.apply(ws) } label: {
                     Image(systemName: ws.symbol)
-                        .font(.system(size: 13 * s, weight: .semibold))
+                        .font(.system(size: 11 * s, weight: .semibold))
                         .foregroundStyle(active ? Theme.fg : Theme.secondary)
-                        .frame(width: 22 * s, height: 22 * s)
+                        .frame(width: 18 * s, height: 18 * s)
                         .background {
                             if active {
-                                RoundedRectangle(cornerRadius: 7 * s, style: .continuous)
+                                RoundedRectangle(cornerRadius: 6 * s, style: .continuous)
                                     .fill(Color.accentColor.opacity(0.35))
                             }
                         }
@@ -135,7 +147,7 @@ private struct RunningAppsHeader: View {
     var body: some View {
         let count = running.apps.count
         let shown = min(count, 12)
-        let iconWidth = (CGFloat(shown) * 22 + CGFloat(max(0, shown - 1)) * 4) * s
+        let iconWidth = (CGFloat(shown) * 18 + CGFloat(max(0, shown - 1)) * 4) * s
         HStack(spacing: 6 * s) {
             ScrollView(.horizontal) {
                 HStack(spacing: 4 * s) {
@@ -145,7 +157,7 @@ private struct RunningAppsHeader: View {
                         } label: {
                             Image(nsImage: app.icon ?? NSImage())
                                 .resizable()
-                                .frame(width: 22 * s, height: 22 * s)
+                                .frame(width: 18 * s, height: 18 * s)
                         }
                         .menuStyle(.button)
                         .buttonStyle(.plain)
@@ -162,7 +174,7 @@ private struct RunningAppsHeader: View {
             Button(action: confirmQuitAll) {
                 Text("Alle")
                     .font(.system(size: 9 * s, weight: .semibold))
-                    .frame(width: 34 * s, height: 22 * s)
+                    .frame(width: 34 * s, height: 18 * s)
             }
             .buttonStyle(.plain)
             .background(Capsule().fill(Theme.tileHi.opacity(0.7)))
@@ -227,19 +239,19 @@ struct AppIdentityBadge: View {
         HStack(spacing: 5 * scale) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
                 .resizable()
-                .frame(width: 18 * scale, height: 18 * scale)
-            VStack(alignment: .leading, spacing: 1 * scale) {
+                .frame(width: 14 * scale, height: 14 * scale)
+            VStack(alignment: .leading, spacing: 0) {
                 Text("Crohniq Dock")
-                    .font(.system(size: 9 * scale, weight: .semibold))
+                    .font(.system(size: 8 * scale, weight: .semibold))
                     .lineLimit(1)
                 Text(buildInfo)
-                    .font(.system(size: 7 * scale))
+                    .font(.system(size: 6.5 * scale))
                     .foregroundStyle(Theme.secondary)
                     .lineLimit(1)
             }
         }
         .padding(.horizontal, 6 * scale)
-        .frame(width: 172 * scale, height: 26 * scale, alignment: .leading)
+        .frame(width: 172 * scale, height: 18 * scale, alignment: .leading)
         .background(Capsule().fill(.ultraThinMaterial))
         .help("Crohniq Dock · \(buildInfo)")
     }
@@ -312,7 +324,7 @@ private struct ProfileSwitcher: View {
                         .font(.system(size: 10 * s, weight: .semibold))
                         .foregroundStyle(profile.id == store.activeProfileID ? Theme.fg : Theme.secondary)
                         .padding(.horizontal, 9 * s)
-                        .frame(height: 22 * s)
+                        .frame(height: 18 * s)
                         .background {
                             if profile.id == store.activeProfileID {
                                 Capsule().fill(Theme.tileHi.opacity(0.82))
@@ -334,7 +346,7 @@ private struct ProfileSwitcher: View {
                     Image(systemName: "plus")
                         .font(.system(size: 10 * s, weight: .semibold))
                         .foregroundStyle(Theme.secondary)
-                        .frame(width: 24 * s, height: 22 * s)
+                        .frame(width: 24 * s, height: 18 * s)
                         .background(Capsule().fill(Theme.tileHi.opacity(0.5)))
                 }
                 .buttonStyle(.plain)
@@ -344,7 +356,7 @@ private struct ProfileSwitcher: View {
             .padding(.horizontal, 3 * s)
         }
         .scrollIndicators(.hidden)
-        .frame(height: 28 * s)
+        .frame(height: 20 * s)
         .background {
             if Theme.glass {
                 Capsule().fill(.clear)
@@ -358,8 +370,63 @@ private struct ProfileSwitcher: View {
 }
 
 /// Bar background. Glass is applied to the content itself so the tiles are always drawn on top of it.
+/// Outline of the bar: a rounded band for the tiles and, centred above it, a tab for the header,
+/// joined by concave curves so the edge follows the content without empty areas.
+struct DockOutline: InsettableShape {
+    /// Width of the header tab; nil draws a plain rounded rectangle.
+    var tabWidth: CGFloat?
+    /// How far the band's edge lies below the tab's edge.
+    var bodyInset: CGFloat
+    var corner: CGFloat
+    /// Header below the tiles (bar at the top of the screen).
+    var flipped = false
+    var insetAmount: CGFloat = 0
+
+    func inset(by amount: CGFloat) -> DockOutline {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
+
+    func path(in full: CGRect) -> Path {
+        let rect = full.insetBy(dx: insetAmount, dy: insetAmount)
+        let radius = max(0, corner - insetAmount)
+        let fillet = max(0, min(radius, bodyInset) * 0.45)
+        guard let tab = tabWidth.map({ $0 - insetAmount * 2 }), bodyInset > 1,
+              tab < rect.width - 2 * (radius + fillet) else {
+            return RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: rect)
+        }
+        let w = rect.width, h = rect.height
+        let top = bodyInset
+        let tabRadius = max(0, min(radius, top - fillet))
+        let x0 = (w - tab) / 2, x1 = x0 + tab
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: top + radius))
+        p.addQuadCurve(to: CGPoint(x: radius, y: top), control: CGPoint(x: 0, y: top))
+        p.addLine(to: CGPoint(x: x0 - fillet, y: top))
+        p.addQuadCurve(to: CGPoint(x: x0, y: top - fillet), control: CGPoint(x: x0, y: top))
+        p.addLine(to: CGPoint(x: x0, y: tabRadius))
+        p.addQuadCurve(to: CGPoint(x: x0 + tabRadius, y: 0), control: CGPoint(x: x0, y: 0))
+        p.addLine(to: CGPoint(x: x1 - tabRadius, y: 0))
+        p.addQuadCurve(to: CGPoint(x: x1, y: tabRadius), control: CGPoint(x: x1, y: 0))
+        p.addLine(to: CGPoint(x: x1, y: top - fillet))
+        p.addQuadCurve(to: CGPoint(x: x1 + fillet, y: top), control: CGPoint(x: x1, y: top))
+        p.addLine(to: CGPoint(x: w - radius, y: top))
+        p.addQuadCurve(to: CGPoint(x: w, y: top + radius), control: CGPoint(x: w, y: top))
+        p.addLine(to: CGPoint(x: w, y: h - radius))
+        p.addQuadCurve(to: CGPoint(x: w - radius, y: h), control: CGPoint(x: w, y: h))
+        p.addLine(to: CGPoint(x: radius, y: h))
+        p.addQuadCurve(to: CGPoint(x: 0, y: h - radius), control: CGPoint(x: 0, y: h))
+        p.closeSubpath()
+        let transform = flipped
+            ? CGAffineTransform(translationX: rect.minX, y: rect.maxY).scaledBy(x: 1, y: -1)
+            : CGAffineTransform(translationX: rect.minX, y: rect.minY)
+        return p.applying(transform)
+    }
+}
+
 private struct BarSurface: ViewModifier {
-    let shape: RoundedRectangle
+    let shape: DockOutline
     let palette: Palette
     let settings: DockSettings
 
@@ -406,6 +473,39 @@ private struct ReorderDrop: DropDelegate {
         }
         dragging = nil
         return addCatalogWidget(from: info.itemProviders(for: [.text]))
+    }
+}
+
+/// A widget dragged well away from the bar (about five icon lengths) and released there is removed,
+/// like an icon dragged off the macOS Dock.
+enum WidgetDragOut {
+    private static var timer: Timer?
+
+    static func begin(_ id: UUID, onEnd: @escaping () -> Void) {
+        timer?.invalidate()
+        let t = Timer(timeInterval: 0.05, repeats: true) { t in
+            guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+            t.invalidate()
+            timer = nil
+            let pointer = NSEvent.mouseLocation
+            // Only a clear pull-off removes it: released about five icon lengths away from the dock.
+            // Closer drops snap back; nothing is ever placed on the desktop.
+            if let frame = AppDelegate.shared.dock.windowFrame,
+               distance(from: pointer, to: frame) >= DockStore.shared.unit * 5 {
+                withAnimation(.easeOut(duration: 0.2)) { DockStore.shared.remove(id) }
+                NSSound(named: "Pop")?.play()
+            }
+            onEnd()
+        }
+        // Common mode keeps the timer running while the drag session tracks the mouse.
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    private static func distance(from point: NSPoint, to rect: NSRect) -> CGFloat {
+        let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
+        let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
+        return (dx * dx + dy * dy).squareRoot()
     }
 }
 
@@ -527,7 +627,7 @@ struct TileContainer: View {
         let tile = WidgetHost(instance: instance)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         Group {
-            if instance.kind.hugsIcon {
+            if instance.hugsIcon {
                 tile
             } else {
                 tile
@@ -576,10 +676,11 @@ struct TileContainer: View {
         case .weather: return AnyView(WeatherHoverList(city: instance.cfg("city", "auto")))
         case .nowPlaying: return AnyView(MusicHoverList())
         case .photos: return AnyView(PhotosHoverList(count: min(max(Int(instance.cfg("count", "5")) ?? 5, 1), 12)))
-        case .panoramas: return AnyView(PanoramasHoverList(count: min(max(Int(instance.cfg("count", "10")) ?? 10, 1), 50)))
+        case .panoramas: return AnyView(PanoramasHoverList(count: 50))
         case .shortcuts: return AnyView(ShortcutsHoverList(w: instance))
         case .dropbox: return AnyView(DropboxHoverList(w: instance))
         case .finder: return AnyView(FinderHoverList(w: instance))
+        case .clipboard: return AnyView(ClipboardHoverList())
         default: return nil
         }
     }
@@ -857,6 +958,15 @@ struct Sparkline: Shape {
 
 extension View {
     func tilePadding(_ s: CGFloat) -> some View { padding(.horizontal, 6 * s).padding(.vertical, 4 * s) }
+}
+
+/// Tile padding for widgets on a tile; none when the widget is a plain app icon.
+struct TilePaddingUnlessIcon: ViewModifier {
+    let isIcon: Bool
+    let s: CGFloat
+    func body(content: Content) -> some View {
+        if isIcon { content.frame(maxWidth: .infinity, maxHeight: .infinity) } else { content.tilePadding(s) }
+    }
 }
 
 func fileIcon(_ path: String) -> NSImage { NSWorkspace.shared.icon(forFile: path) }

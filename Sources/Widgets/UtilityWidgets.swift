@@ -312,46 +312,73 @@ final class DeveloperUsageStore: ObservableObject {
     }
 
     private func refreshClaude() async {
+        func show(_ primary: String, _ secondary: String, _ percent: Int? = nil) async {
+            await MainActor.run { values[.claude] = Value(primary: primary, secondary: secondary, usedPercent: percent) }
+        }
         guard let credentials = loadClaudeCredentials() else {
-            await MainActor.run { values[.claude] = Value(primary: "Nicht abrufbar", secondary: "Claude neu anmelden") }
+            await show("Keine Anmeldung", "In Claude Code /login ausführen")
             return
         }
-
-        var accessToken = credentials.accessToken
-        if credentials.expiresAt <= Date().timeIntervalSince1970 * 1000,
-           let refreshed = await refreshClaudeToken(credentials) {
-            accessToken = refreshed
+        // The token is never renewed here: a renewal would replace Claude Code's own refresh token
+        // without saving it and sign Claude Code out. Claude Code renews it whenever it runs.
+        if credentials.expiresAt > 0, credentials.expiresAt <= Date().timeIntervalSince1970 * 1000 {
+            await show("Anmeldung abgelaufen", "Claude Code kurz starten")
+            return
         }
 
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            await MainActor.run { values[.claude] = Value(primary: "Nicht abrufbar", secondary: "Claude neu anmelden") }
+        request.timeoutInterval = 15
+        guard let (data, response) = try? await URLSession.shared.data(for: request) else {
+            await show("Keine Verbindung", "Später erneut versuchen")
+            return
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        switch status {
+        case 200: break
+        case 401, 403:
+            await show("Anmeldung abgelaufen", "Claude Code kurz starten")
+            return
+        case 429:
+            await show("Zu viele Abfragen", "Gleich erneut versuchen")
+            return
+        default:
+            await show("Nicht abrufbar", "Serverantwort \(status)")
+            return
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            await show("Nicht abrufbar", "Unbekannte Antwort")
             return
         }
 
-        let fiveHour = (json["five_hour"] as? [String: Any])?["utilization"]
-        let sevenDay = (json["seven_day"] as? [String: Any])?["utilization"]
-        let shortUsed = Int((fiveHour as? NSNumber)?.doubleValue ?? 0)
-        let weekUsed = Int((sevenDay as? NSNumber)?.doubleValue ?? 0)
-        await MainActor.run {
-            values[.claude] = Value(
-                primary: "5 Std.: \(shortUsed) %",
-                secondary: "Woche: \(weekUsed) %",
-                usedPercent: max(shortUsed, weekUsed)
-            )
+        func window(_ key: String) -> (used: Int, reset: String?)? {
+            guard let entry = json[key] as? [String: Any],
+                  let utilization = (entry["utilization"] as? NSNumber)?.doubleValue else { return nil }
+            var reset: String?
+            if let text = entry["resets_at"] as? String {
+                let iso = ISO8601DateFormatter()
+                iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                let date = iso.date(from: text) ?? ISO8601DateFormatter().date(from: text)
+                if let date, date > Date() { reset = usageResetText(Int(date.timeIntervalSinceNow)) }
+            }
+            return (Int(utilization.rounded()), reset)
         }
+        let short = window("five_hour")
+        let week = window("seven_day")
+        guard short != nil || week != nil else {
+            await show("Kein Kontingent", "Nur für Pro/Max-Abos")
+            return
+        }
+        let shortText = short.map { "5 Std.: \($0.used) %" + ($0.reset.map { " · \($0)" } ?? "") } ?? "5 Std.: –"
+        let weekText = week.map { "Woche: \($0.used) %" + ($0.reset.map { " · \($0)" } ?? "") } ?? "Woche: –"
+        await show(shortText, weekText, max(short?.used ?? 0, week?.used ?? 0))
     }
 
     private struct ClaudeCredentials {
         let accessToken: String
-        let refreshToken: String
         let expiresAt: Double
-        let clientId: String
-        let scopes: [String]
     }
 
     private func loadClaudeCredentials() -> ClaudeCredentials? {
@@ -364,39 +391,18 @@ final class DeveloperUsageStore: ObservableObject {
             process.standardOutput = pipe
             process.standardError = Pipe()
             guard (try? process.run()) != nil else { continue }
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { continue }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let oauth = json["claudeAiOauth"] as? [String: Any],
-                  let accessToken = oauth["accessToken"] as? String,
-                  let refreshToken = oauth["refreshToken"] as? String else { continue }
+                  let accessToken = oauth["accessToken"] as? String else { continue }
             return ClaudeCredentials(
                 accessToken: accessToken,
-                refreshToken: refreshToken,
-                expiresAt: (oauth["expiresAt"] as? NSNumber)?.doubleValue ?? 0,
-                clientId: (oauth["clientId"] as? String) ?? "9d1c250a-e61b-44d9-88ed-26761c68b7e8",
-                scopes: (oauth["scopes"] as? [String]) ?? ["org:create_api_key", "user:profile", "user:inference"]
+                expiresAt: (oauth["expiresAt"] as? NSNumber)?.doubleValue ?? 0
             )
         }
         return nil
-    }
-
-    private func refreshClaudeToken(_ credentials: ClaudeCredentials) async -> String? {
-        var request = URLRequest(url: URL(string: "https://platform.claude.com/v1/oauth/token")!)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = [
-            "grant_type": "refresh_token",
-            "refresh_token": credentials.refreshToken,
-            "client_id": credentials.clientId,
-            "scope": credentials.scopes.joined(separator: " ")
-        ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let accessToken = json["access_token"] as? String else { return nil }
-        return accessToken
     }
 
     private func usageResetText(_ seconds: Int) -> String {
@@ -466,6 +472,8 @@ struct DeveloperUsageWidget: View {
         .tilePadding(s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { usage.refresh() }
+        // Keep the gauges current: every 5 minutes.
+        .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in usage.refresh() }
         .help("Echte Kontingentdaten; Klick öffnet die offizielle Anbieterübersicht.")
     }
 
@@ -931,7 +939,7 @@ struct ShortcutsWidgetSettings: View {
     var body: some View {
         Section("Kurzbefehle auswählen") {
             HStack {
-                Text("Nur ausgewählte Kurzbefehle erscheinen im Widget und in der Tora.")
+                Text("Nur ausgewählte Kurzbefehle erscheinen im Widget und in der Liste beim Überfahren.")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Aktualisieren") { catalog.refresh() }

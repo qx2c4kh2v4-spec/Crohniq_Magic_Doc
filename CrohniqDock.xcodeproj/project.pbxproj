@@ -10,6 +10,7 @@
 		031335DFD4CB8F3C03C71DA8 /* DockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFF06EFA8605BD8E9798FB8 /* DockPanel.swift */; };
 		1B042781338B4C89348FBD70 /* HoverLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8597BAEDDB76DC5095BAF7 /* HoverLists.swift */; };
 		26A0D881C08A42AE53A8E0E4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0101C445872FFEDCB416F747 /* SettingsView.swift */; };
+		28E9E8925F21FBA0B96360EF /* DockMenuReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F7BE7E3BA5E8FCD7C2D264 /* DockMenuReader.swift */; };
 		29B85473DE7C3745928B508D /* Gallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D1F231FAED3EB7583A5582 /* Gallery.swift */; };
 		31DBD80E6C9363B3712045DB /* UtilityWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2D1DB90C7B4EA53CDA64FA /* UtilityWidgets.swift */; };
 		332888E1FECF85568946A7E4 /* AppWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22578C4A33F285D38894C557 /* AppWidgets.swift */; };
@@ -19,6 +20,7 @@
 		51DC4AB16870A7857EC17049 /* BrowserHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E1F029BBC743CE2AFF03B1 /* BrowserHistory.swift */; };
 		535229E62868CCC440F018D9 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45CE8E11D71391F582AA3351 /* App.swift */; };
 		632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */; };
+		6AB95582B843A188A6B882A9 /* QuickNotesExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C13C9168F408D64AADCDA68 /* QuickNotesExport.swift */; };
 		7C227B986DAA3D63EF621C7F /* DockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F9F378EC332D7CADF2497B /* DockView.swift */; };
 		8187D90A6D495AA1CEF23EFE /* WeatherRadar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C35C8063FA42BC4822F3AAD /* WeatherRadar.swift */; };
 		908F1AB7D3BB410BD0F681BF /* HoverUnroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B08E70115B4613534F46521 /* HoverUnroll.swift */; };
@@ -42,9 +44,11 @@
 		32529777FEFE89CF0A2F9B46 /* SearchAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchAI.swift; sourceTree = "<group>"; };
 		39E1F029BBC743CE2AFF03B1 /* BrowserHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserHistory.swift; sourceTree = "<group>"; };
 		3A27DCA15116D6637EA85F06 /* NexusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusWidget.swift; sourceTree = "<group>"; };
+		3C13C9168F408D64AADCDA68 /* QuickNotesExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickNotesExport.swift; sourceTree = "<group>"; };
 		3F8597BAEDDB76DC5095BAF7 /* HoverLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverLists.swift; sourceTree = "<group>"; };
 		41F0DC0D1265BEDFE91B3E18 /* AddPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPanel.swift; sourceTree = "<group>"; };
 		45CE8E11D71391F582AA3351 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		46F7BE7E3BA5E8FCD7C2D264 /* DockMenuReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockMenuReader.swift; sourceTree = "<group>"; };
 		4D81D1BE6592FCA4BFCA95C5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5C35C8063FA42BC4822F3AAD /* WeatherRadar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherRadar.swift; sourceTree = "<group>"; };
 		62522C331928E81EB498650C /* LauncherWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherWidget.swift; sourceTree = "<group>"; };
@@ -76,7 +80,9 @@
 			isa = PBXGroup;
 			children = (
 				39E1F029BBC743CE2AFF03B1 /* BrowserHistory.swift */,
+				46F7BE7E3BA5E8FCD7C2D264 /* DockMenuReader.swift */,
 				BCCFE524DA1E3DF7BA7BE2A4 /* Photos.swift */,
+				3C13C9168F408D64AADCDA68 /* QuickNotesExport.swift */,
 				8BFBC845FC638B78B0DC11C0 /* Services.swift */,
 			);
 			path = Services;
@@ -181,11 +187,10 @@
 				};
 			};
 			buildConfigurationList = 426C025B77C5115BCE6C39EE /* Build configuration list for PBXProject "CrohniqDock" */;
-			developmentRegion = de;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
-				de,
 				en,
 			);
 			mainGroup = C038FF17C7D8F1B07138B0FA;
@@ -221,6 +226,7 @@
 				332888E1FECF85568946A7E4 /* AppWidgets.swift in Sources */,
 				DE5282FF7C060C4C592363CD /* BookmarksWidget.swift in Sources */,
 				51DC4AB16870A7857EC17049 /* BrowserHistory.swift in Sources */,
+				28E9E8925F21FBA0B96360EF /* DockMenuReader.swift in Sources */,
 				031335DFD4CB8F3C03C71DA8 /* DockPanel.swift in Sources */,
 				7C227B986DAA3D63EF621C7F /* DockView.swift in Sources */,
 				F2EFA2BC53BBAB333BF3067F /* FinderWidget.swift in Sources */,
@@ -232,6 +238,7 @@
 				D3B473FD47DA8B96514C9108 /* NexusWidget.swift in Sources */,
 				351EDA166F14CB27B40469D3 /* Photos.swift in Sources */,
 				AA48A04C45C2F7E6D498E547 /* ProductivityWidgets.swift in Sources */,
+				6AB95582B843A188A6B882A9 /* QuickNotesExport.swift in Sources */,
 				3C94AF079E5912164D207AD8 /* QuitAppsWidget.swift in Sources */,
 				D66A973CC0BD72D4EEA1548A /* SearchAI.swift in Sources */,
 				9C29501B5809C478CF64FC3E /* Services.swift in Sources */,
@@ -280,8 +287,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 31;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_LANGUAGE = de;
 				DEVELOPMENT_TEAM = FW84ZL64CN;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -339,8 +347,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 31;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_LANGUAGE = de;
 				DEVELOPMENT_TEAM = FW84ZL64CN;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

@@ -76,7 +76,7 @@ final class PhotoLibrary: ObservableObject {
     func requestImage(for asset: PHAsset, size: CGSize, completion: @escaping (NSImage?) -> Void) {
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
-        options.resizeMode = .fast
+        options.resizeMode = .exact
         options.isNetworkAccessAllowed = true
         PHImageManager.default().requestImage(
             for: asset,
@@ -90,6 +90,19 @@ final class PhotoLibrary: ObservableObject {
 
     static func openPrivacySettings() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos")!)
+    }
+
+    /// Smallest picture width offered as wallpaper, from the widest screen (at least 2560 px).
+    static var minimumWallpaperWidth: Int {
+        let widest = NSScreen.screens.map { Int($0.frame.width * $0.backingScaleFactor) }.max() ?? 2560
+        return max(2560, widest * 3 / 4)
+    }
+
+    private static func isLargeEnough(_ url: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = props[kCGImagePropertyPixelWidth] as? Int else { return false }
+        return width >= minimumWallpaperWidth
     }
 
     private static func loadAppleWallpapers() -> [URL] {
@@ -121,23 +134,9 @@ final class PhotoLibrary: ObservableObject {
             }
         }
 
-        let desktopPictures = URL(fileURLWithPath: "/System/Library/Desktop Pictures", isDirectory: true)
-        if let enumerator = fileManager.enumerator(
-            at: desktopPictures,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles],
-            errorHandler: nil
-        ) {
-            for case let url as URL in enumerator
-            where url.pathExtension.lowercased() == "madesktop" {
-                guard let plist = NSDictionary(contentsOf: url),
-                      let thumbnail = plist["thumbnailPath"] as? String else { continue }
-                let thumbnailURL = URL(fileURLWithPath: thumbnail)
-                if fileManager.isReadableFile(atPath: thumbnailURL.path) {
-                    wallpapers.insert(thumbnailURL)
-                }
-            }
-        }
+        // Aerial wallpapers (.madesktop) are videos; their thumbnails are far too small for a desktop
+        // and looked blurry when stretched to the screen, so only full-size pictures are offered.
+        wallpapers = wallpapers.filter { isLargeEnough($0) }
 
         return wallpapers.sorted {
             $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending

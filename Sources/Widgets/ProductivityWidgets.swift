@@ -922,6 +922,27 @@ struct NotesWidget: View {
     var body: some View {
         let text = w.cfg("text")
         let first = text.split(separator: "\n").first.map(String.init) ?? ""
+        if w.isAppIcon {
+            // Size 1: the Notes app icon at launcher size, with a small "+" for a new note.
+            let icon = DockStore.launcherIcon(size: 1, showsName: false) * s
+            Image(nsImage: fileIcon("/System/Applications/Notes.app")).resizable()
+                .frame(width: icon, height: icon)
+                .onTapGesture { NotesLibrary.shared.refresh(force: true); NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Notes.app")) }
+                .help("Notizen öffnen")
+                .overlay(alignment: .bottomTrailing) {
+                    CircleButton(symbol: "plus", size: 18, fill: Color.yellow.opacity(0.9), tint: .black.opacity(0.75)) {
+                        creating = true
+                    }
+                    .help("Neue Notiz in der Notizen-App")
+                    .popover(isPresented: $creating, arrowEdge: .top) { NewNoteEditor(isPresented: $creating) }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            noteTile(text: text, first: first)
+        }
+    }
+
+    private func noteTile(text: String, first: String) -> some View {
         HStack(spacing: 10 * s) {
             Image(systemName: "note.text").font(.system(size: 18 * s))
                 .frame(width: 34 * s, height: 34 * s)
@@ -979,12 +1000,13 @@ struct MailWidget: View {
     var body: some View {
         HStack(spacing: 8 * s) {
             ZStack(alignment: .topTrailing) {
-                Image(nsImage: fileIcon("/System/Applications/Mail.app")).resizable().frame(width: 38 * s, height: 38 * s)
+                let icon = (w.isAppIcon ? DockStore.launcherIcon(size: 1, showsName: false) : 38) * s
+                Image(nsImage: fileIcon("/System/Applications/Mail.app")).resizable().frame(width: icon, height: icon)
                 if let n = unread, n > 0 {
                     Text(n > 999 ? "999+" : "\(n)").font(.system(size: 10 * s, weight: .bold))
                         .padding(.horizontal, 4 * s).padding(.vertical, 1 * s)
                         .background(Capsule().fill(.red))
-                        .offset(x: 6 * s, y: -4 * s)
+                        .offset(x: w.isAppIcon ? 0 : 6 * s, y: w.isAppIcon ? 2 * s : -4 * s)
                 }
             }
             if w.size > 1 {
@@ -995,7 +1017,7 @@ struct MailWidget: View {
                 Spacer(minLength: 0)
             }
         }
-        .tilePadding(s)
+        .modifier(TilePaddingUnlessIcon(isIcon: w.isAppIcon, s: s))
         .contentShape(Rectangle())
         .onTapGesture { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Mail.app")) }
         .onAppear(perform: refresh)

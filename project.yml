@@ -9,7 +9,7 @@ settings:
     DEVELOPMENT_LANGUAGE: de
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "30"
+    CURRENT_PROJECT_VERSION: "31"
 targets:
   CrohniqDock:
     type: application
@@ -43,6 +43,9 @@ targets:
         com.apple.security.personal-information.calendars: true
         com.apple.security.personal-information.addressbook: true
         com.apple.security.personal-information.location: true
+        com.apple.security.personal-information.photos-library: true
+        com.apple.security.application-groups:
+          - FW84ZL64CN.ch.crohniq.shared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ch.crohniq.dock

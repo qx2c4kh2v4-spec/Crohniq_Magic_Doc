@@ -20,6 +20,8 @@ final class DockPanelController: NSObject, NSWindowDelegate {
     private var revealed = true
     private var isRepositioning = false
     private var dragging = false
+    /// Auto-hide pauses until then, after a setting changed.
+    private var holdUntil = Date.distantPast
 
     private var store: DockStore { .shared }
 
@@ -45,6 +47,14 @@ final class DockPanelController: NSObject, NSWindowDelegate {
             .receive(on: RunLoop.main)
             .debounce(for: .milliseconds(30), scheduler: RunLoop.main)
             .sink { [weak self] in self?.layout(animated: true) }
+            .store(in: &bag)
+
+        // A changed setting (size, theme, position …) keeps the bar shown briefly, so the result is visible.
+        store.$settings
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.holdVisible() }
             .store(in: &bag)
 
         WorkspaceManager.shared.objectWillChange
@@ -218,18 +228,23 @@ final class DockPanelController: NSObject, NSWindowDelegate {
         let s = store.settings
         var inside = frame.insetBy(dx: -12, dy: -12).contains(mouse)
         if !revealed {
-            let vis = screen.visibleFrame
+            // Hidden: only the pointer at the screen edge the bar sits on (at most 1 cm away) brings it back.
             let full = screen.frame
+            let zone = edgeZone(of: screen)
             let inX = mouse.x >= frame.minX - 40 && mouse.x <= frame.maxX + 40
             let inY = mouse.y >= frame.minY - 40 && mouse.y <= frame.maxY + 40
-            switch s.position {
-            case .bottom: inside = inX && mouse.y <= vis.minY + 3 && mouse.y >= full.minY
-            case .top: inside = inX && mouse.y >= vis.maxY - 3
-            case .left: inside = inY && mouse.x <= vis.minX + 3 && mouse.x >= full.minX
-            case .right: inside = inY && mouse.x >= vis.maxX - 3 && mouse.x <= full.maxX
-            case .free: inside = frame.contains(mouse)
+            let onScreen = full.contains(mouse) || mouse.y == full.maxY || mouse.x == full.maxX
+            switch nearestEdge(of: frame, position: s.position) {
+            case .bottom: inside = inX && mouse.y <= full.minY + zone
+            case .top: inside = inX && mouse.y >= full.maxY - zone
+            case .left: inside = inY && mouse.x <= full.minX + zone
+            case .right: inside = inY && mouse.x >= full.maxX - zone
+            case .free: inside = false
             }
+            inside = inside && onScreen
         }
+        // Keep visible while settings are open or a setting just changed.
+        if AppDelegate.shared?.isSettingsOpen == true || Date() < holdUntil { inside = true }
         // Keep visible while a popover, an unrolled list or a text field is in use.
         if HoverPanel.shared.isVisible && HoverPanel.shared.frame.insetBy(dx: -8, dy: -8).contains(mouse) { inside = true }
         if panel.isKeyWindow || NSApp.windows.contains(where: { $0.isVisible && $0.className.contains("Popover") }) {
@@ -241,6 +256,32 @@ final class DockPanelController: NSObject, NSWindowDelegate {
         } else if revealed, Date().timeIntervalSince(lastInside) > 0.7 {
             reveal(false)
         }
+    }
+
+    /// 1 cm in points on this screen, from its physical size; about 38 pt when unknown.
+    private func edgeZone(of screen: NSScreen) -> CGFloat {
+        let fallback: CGFloat = 38
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return fallback }
+        let mm = CGDisplayScreenSize(CGDirectDisplayID(number.uint32Value)).width
+        guard mm > 0 else { return fallback }
+        return max(8, min(60, screen.frame.width / mm * 10))
+    }
+
+    /// The screen edge the bar belongs to. A freely placed bar uses the edge it is closest to.
+    private func nearestEdge(of frame: NSRect, position: DockPosition) -> DockPosition {
+        guard position == .free else { return position }
+        let full = screen.frame
+        let distances: [(DockPosition, CGFloat)] = [
+            (.bottom, frame.minY - full.minY), (.top, full.maxY - frame.maxY),
+            (.left, frame.minX - full.minX), (.right, full.maxX - frame.maxX),
+        ]
+        return distances.min { $0.1 < $1.1 }?.0 ?? .bottom
+    }
+
+    private func holdVisible() {
+        holdUntil = Date().addingTimeInterval(2)
+        lastInside = Date()
+        if isVisible, !revealed { reveal(true) }
     }
 
     private func reveal(_ show: Bool) {

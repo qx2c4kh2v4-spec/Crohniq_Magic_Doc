@@ -167,9 +167,24 @@ struct GeneralSettings: View {
                     .font(.system(size: 16, weight: .semibold))
             }
             Section("Grösse & Leiste") {
-                Slider(value: $store.settings.tileSize, in: 48...96, step: 2) {
-                    Text("Kachelgrösse")
+                Slider(value: Binding(get: { store.settings.dockScale ?? 1 },
+                                      set: { store.settings.dockScale = ($0 * 20).rounded() / 20 }),
+                       in: 0.6...1.5) {
+                    Text("Dock-Grösse")
                 } minimumValueLabel: { Text("S") } maximumValueLabel: { Text("L") }
+                Text("Ganzes Dock mit Kopfzeile, Abständen und Widgets: \(Int(((store.settings.dockScale ?? 1) * 100).rounded())) %")
+                    .font(.caption).foregroundStyle(.secondary)
+                Slider(value: $store.settings.tileSize, in: 40...112, step: 2) {
+                    Text("Widget-Grösse")
+                } minimumValueLabel: { Text("S") } maximumValueLabel: { Text("L") }
+                Text("Nur die Widgets: \(Int(store.settings.tileSize)) pt")
+                    .font(.caption).foregroundStyle(.secondary)
+                if (store.settings.dockScale ?? 1) != 1 || store.settings.tileSize != 64 {
+                    Button("Grössen zurücksetzen") {
+                        store.settings.dockScale = nil
+                        store.settings.tileSize = 64
+                    }
+                }
                 Toggle("Hintergrundleiste anzeigen", isOn: $store.settings.showBar)
                 if store.settings.showBar && !(store.settings.glass ?? true) {
                     Slider(value: $store.settings.barOpacity, in: 0.3...1) { Text("Deckkraft der Leiste") }
@@ -179,6 +194,10 @@ struct GeneralSettings: View {
                 Toggle("Tastenkürzel ⌥⌘D blendet die Leiste ein/aus, ⌃⌥1–9 wechselt den Arbeitsbereich", isOn: $store.settings.hotkey)
                 Toggle("Listen beim Überfahren aufrollen (Kalender, Erinnerungen, Notizen)",
                        isOn: Binding(get: { store.settings.hoverLists ?? true }, set: { store.settings.hoverLists = $0 }))
+                Toggle("Liste zeigt das Dock-Menü offener Apps (Fenster, zuletzt verwendet, App-Einträge)",
+                       isOn: Binding(get: { store.settings.readDockMenus ?? true }, set: { store.settings.readDockMenus = $0 }))
+                Text("Liest das Rechtsklick-Menü des macOS-Docks über die Bedienungshilfen. Es blitzt dabei kurz am macOS-Dock auf.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Bei Anmeldung starten", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, on in
                         try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
@@ -488,7 +507,7 @@ struct WidgetEditor: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Section("Tora / Aufklappansicht") {
+            Section("Liste beim Überfahren") {
                 Toggle("Beim Überfahren anzeigen", isOn: unrollEnabledBinding)
                 fieldView(ConfigField(
                     key: "unrollFolder",

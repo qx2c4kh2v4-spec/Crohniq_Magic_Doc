@@ -22,10 +22,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let dock = DockPanelController()
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    /// The dock stays shown while settings are open, so changes can be watched live.
+    var isSettingsOpen: Bool { settingsWindow?.isVisible == true }
     private var bag = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        diagLog("CrohniqDiag launch ax=%d", AXIsProcessTrusted() ? 1 : 0)
         // Developer check: render the gallery offscreen to a PNG and quit (no screen capture involved).
         if let i = CommandLine.arguments.firstIndex(of: "--render-gallery"), CommandLine.arguments.count > i + 1 {
             let path = CommandLine.arguments[i + 1]
@@ -42,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         _ = LocationService.shared
+        ClipboardHistory.shared.start()
         ShortcutsScheduler.shared.start()
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
