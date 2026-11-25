@@ -844,6 +844,8 @@ struct LauncherHoverList: View {
     @State private var dockMenu: [DockMenuEntry] = []
     @State private var dockMenuLoaded = false
     @State private var runningApp: NSRunningApplication?
+    @State private var whatsAppChats: [WhatsAppChat] = []
+    @State private var whatsAppError: String?
 
     private var appPath: String { app }
     private var itemCount: Int { w.fileCount(for: app) }
@@ -854,6 +856,7 @@ struct LauncherHoverList: View {
         let bundleID = Bundle(path: appPath)?.bundleIdentifier
         return ["com.apple.Safari", "org.mozilla.firefox"].contains(bundleID ?? "") ? bundleID : nil
     }
+    private var isWhatsApp: Bool { Bundle(path: appPath)?.bundleIdentifier == WhatsAppChats.bundleID }
     private var aiEngine: SearchEngine? {
         switch Bundle(path: appPath)?.bundleIdentifier {
         case SearchEngine.chatGPTID: .chatgpt
@@ -920,6 +923,15 @@ struct LauncherHoverList: View {
                         }
                         Divider()
                     }
+                    if isWhatsApp {
+                        Text("LETZTE CHATS").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                        if !loaded {
+                            ProgressView().controlSize(.small)
+                        } else if whatsAppChats.isEmpty {
+                            Text(whatsAppError ?? "Keine Chats gefunden.").font(.callout).foregroundStyle(Theme.secondary)
+                        }
+                        ForEach(whatsAppChats) { whatsAppRow($0) }
+                    } else {
                     Text("ZULETZT VERWENDET").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
                     if !loaded {
                         ProgressView().controlSize(.small)
@@ -928,6 +940,7 @@ struct LauncherHoverList: View {
                     }
                     ForEach(recent.map(\.path).filter { !pinned.contains($0) }.prefix(itemCount), id: \.self) {
                         row($0, pinnedRow: false)
+                    }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -1039,6 +1052,8 @@ struct LauncherHoverList: View {
         DispatchQueue.global(qos: .userInitiated).async {
             let r = AppLauncher.recentFiles(appPath: appPath, limit: recentLimit)
             diagLog("CrohniqDiag recent app=%@ count=%d running=%d", appPath, r.count, running == nil ? 0 : 1)
+            let chats = Bundle(path: appPath)?.bundleIdentifier == WhatsAppChats.bundleID
+                ? WhatsAppChats.load(limit: max(recentLimit, 12)) : nil
             let history: (visits: [BrowserVisit], error: String?)?
             if let browserID {
                 history = BrowserHistory.load(bundleID: browserID, limit: historyLimit)
@@ -1047,6 +1062,8 @@ struct LauncherHoverList: View {
             }
             DispatchQueue.main.async {
                 recent = r
+                whatsAppChats = chats?.chats ?? []
+                whatsAppError = chats?.error
                 browserHistory = history?.visits ?? []
                 browserHistoryError = history?.error
                 loaded = true
@@ -1060,6 +1077,45 @@ struct LauncherHoverList: View {
         if aiEngine == .chatgpt { SearchEngine.askChatGPT(value) }
         else { SearchEngine.askClaude(value) }
         question = ""
+    }
+
+    private func whatsAppRow(_ chat: WhatsAppChat) -> some View {
+        Button {
+            chat.open()
+            HoverPanel.shared.close()
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle().fill(Color(red: 0.15, green: 0.73, blue: 0.4).opacity(0.85))
+                    if chat.isGroup {
+                        Image(systemName: "person.3.fill").font(.system(size: 10)).foregroundStyle(.white)
+                    } else {
+                        Text(String(chat.name.prefix(1)).uppercased()).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(chat.name).font(.callout.weight(chat.unread > 0 ? .bold : .medium)).lineLimit(1)
+                    Text(chat.preview).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(Calendar.current.isDateInToday(chat.date)
+                         ? chat.date.formatted(date: .omitted, time: .shortened)
+                         : chat.date.formatted(.dateTime.day().month(.abbreviated)))
+                        .font(.caption2)
+                        .foregroundStyle(chat.unread > 0 ? Color(red: 0.15, green: 0.73, blue: 0.4) : Theme.secondary)
+                    if chat.unread > 0 {
+                        Text("\(chat.unread)")
+                            .font(.caption2.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                            .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
+                            .background(Capsule().fill(Color(red: 0.15, green: 0.73, blue: 0.4)))
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func browserRow(_ visit: BrowserVisit) -> some View {

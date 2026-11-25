@@ -94,7 +94,7 @@ enum BrowserHistory {
     }
 
     /// Copies the database plus its write-ahead log so a running browser does not block the read.
-    private static func snapshotDatabase(_ database: URL) -> URL? {
+    static func snapshotDatabase(_ database: URL) -> URL? {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("crohniq-history-\(UUID().uuidString)", isDirectory: true)
         do {

@@ -11,6 +11,8 @@ final class UnrollModel: ObservableObject {
     @Published var chrome: CGFloat = 0
     var scrollHeight: CGFloat = 0 { didSet { updateChrome() } }
     var height: CGFloat = 0 { didSet { updateChrome() } }
+    /// The list's natural size as SwiftUI laid it out.
+    var size: CGSize = .zero
 
     /// Everything but the scroll area keeps its height; the scroll area gets what is left.
     private func updateChrome() {
@@ -146,69 +148,108 @@ final class HoverPanel {
             .environment(\.colorScheme, Theme.palette.dark ? .dark : .light))
         if let host { host.rootView = root } else {
             let h = FirstMouseHostingView(rootView: root)
+            // The panel is sized and placed by `place` only; AppKit would otherwise grow it downward
+            // (keeping its top edge) when the list loads more entries, over the dock.
+            h.sizingOptions = []
             host = h
             panel.contentView = h
         }
-        place(size: host!.fittingSize)
+        place(size: idealSize)
         panel.orderFrontRegardless()
+        host?.layoutSubtreeIfNeeded()
+        contentSizeChanged()
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { self.model.open = true }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) { self.model.open = true }
         }
         startWatching()
     }
 
-    /// The dock's outer edge above (or below) the hovered tile: the header tab's edge where the tile
-    /// lies under the tab, otherwise the lower edge of the band beside it.
-    private func dockEdge(_ dock: NSRect, top: Bool) -> CGFloat {
+    /// The dock's outline on the side the list grows out of: the band, plus the raised header tab
+    /// in the middle (the same geometry `DockOutline` draws).
+    private struct Outline {
+        var bandEdge: CGFloat
+        var tabEdge: CGFloat
+        /// Horizontal extent of the tab, nil when the bar is a plain rectangle on this side.
+        var tab: ClosedRange<CGFloat>?
+        var fillet: CGFloat = 0
+    }
+
+    private func outline(_ dock: NSRect, top: Bool) -> Outline {
         let store = DockStore.shared
         let edge = top ? dock.maxY : dock.minY
-        guard store.showsHeader, !store.vertical else { return edge }
-        let tabHalf = store.headerTabWidth / 2
-        let underTab = abs(anchor.midX - dock.midX) <= tabHalf
+        let plain = Outline(bandEdge: edge, tabEdge: edge, tab: nil)
+        // The header (and so the tab) sits on the side facing the screen; on the other side the edge is straight.
+        let headerOnTop = store.settings.position != .top
+        guard store.showsHeader, !store.vertical, headerOnTop == top else { return plain }
         let inset = store.profileStripHeight + store.headerGap
-        return underTab ? edge : (top ? edge - inset : edge + inset)
+        let radius = store.corner + store.barPadding
+        let fillet = max(0, min(radius, inset) * 0.45)
+        let tabWidth = store.headerTabWidth
+        guard inset > 1, tabWidth < dock.width - 2 * (radius + fillet) else { return plain }
+        return Outline(bandEdge: top ? edge - inset : edge + inset, tabEdge: edge,
+                       tab: (dock.midX - tabWidth / 2)...(dock.midX + tabWidth / 2), fillet: fillet)
+    }
+
+    /// The list's natural size, measured by SwiftUI (the hosting view does not size the panel itself).
+    private var idealSize: NSSize {
+        model.size
     }
 
     /// Room for the list between the dock's outer edge and the far screen edge.
     private func availableHeight(vis: NSRect) -> CGFloat {
         let dock = AppDelegate.shared.dock.windowFrame ?? anchor
         if vertical { return vis.height }
-        return fromBottom ? vis.maxY - dockEdge(dock, top: true) : dockEdge(dock, top: false) - vis.minY
+        return fromBottom ? vis.maxY - dock.maxY : dock.minY - vis.minY
     }
 
     /// The list grew or shrank (entries finished loading): fit the panel to it.
     func contentSizeChanged() {
-        guard isVisible, let host else { return }
+        guard isVisible else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isVisible else { return }
-            let size = host.fittingSize
-            if abs(size.width - self.panel.frame.width) > 0.5 || abs(size.height - self.panel.frame.height) > 0.5 {
-                self.place(size: size)
-            }
+            // Always re-place: the bottom must stay on the dock even if the size already matches.
+            self.place(size: self.idealSize)
         }
     }
 
     private func place(size: NSSize) {
         let screen = NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main ?? NSScreen.screens[0]
         let vis = screen.visibleFrame
-        var origin: NSPoint
-        // The list sits on the dock's outer edge (its own edge on that side has no margin),
-        // so its line meets the dock's line and the dock stays uncovered.
         let dock = AppDelegate.shared.dock.windowFrame ?? anchor
         if vertical {
             let right = anchor.midX < vis.midX
-            origin = NSPoint(x: right ? dock.maxX : dock.minX - size.width, y: anchor.maxY - size.height + 10)
-        } else if fromBottom {
-            origin = NSPoint(x: anchor.midX - size.width / 2, y: dockEdge(dock, top: true))
-        } else {
-            origin = NSPoint(x: anchor.midX - size.width / 2, y: dockEdge(dock, top: false) - size.height)
-        }
-        origin.x = max(vis.minX, min(origin.x, vis.maxX - size.width))
-        if vertical {
+            var origin = NSPoint(x: right ? dock.maxX : dock.minX - size.width, y: anchor.maxY - size.height + 10)
             origin.y = max(vis.minY, min(origin.y, vis.maxY - size.height))
+            panel.setFrame(NSRect(origin: origin, size: size), display: true)
+            return
         }
-        // Horizontal bar: the list always grows out of the dock's edge and is never pushed back over the dock.
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        // The visible sheet is inset by the slide margin on its left and right.
+        let margin: CGFloat = 10
+        let sheet = size.width - margin * 2
+        let shape = outline(dock, top: fromBottom)
+        var x = anchor.midX - size.width / 2
+        if let tab = shape.tab {
+            if tab.contains(anchor.midX) {
+                // Tile under the tab: keep the whole sheet on the tab.
+                if sheet <= tab.upperBound - tab.lowerBound {
+                    x = min(max(x, tab.lowerBound - margin), tab.upperBound - margin - sheet)
+                }
+            } else if anchor.midX < tab.lowerBound {
+                // Left of the tab: keep the sheet clear of it, on the band.
+                x = min(x, tab.lowerBound - shape.fillet - margin - sheet)
+            } else {
+                x = max(x, tab.upperBound + shape.fillet - margin)
+            }
+        }
+        x = max(vis.minX, min(x, vis.maxX - size.width))
+        // Sit on whatever part of the outline lies under the sheet: the tab if the sheet reaches over it.
+        var edge = shape.bandEdge
+        if let tab = shape.tab {
+            let left = x + margin, right = x + margin + sheet
+            if right > tab.lowerBound - shape.fillet && left < tab.upperBound + shape.fillet { edge = shape.tabEdge }
+        }
+        let y = fromBottom ? edge : edge - size.height
+        panel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
     }
 
     private func startWatching() {
@@ -287,9 +328,15 @@ struct UnrollView: View {
             .padding(.vertical, 12)
             .modifier(DockSheetSurface(shape: shape))
             .foregroundStyle(Theme.fg)
-            .opacity(model.open ? 1 : 0)
-            .scaleEffect(model.open ? 1 : 0.96, anchor: fromBottom ? .bottom : .top)
-            .offset(y: model.open ? 0 : (fromBottom ? 10 : -10))
+            // Unrolls out of the dock: revealed from the edge that touches the dock outward.
+            .mask(alignment: fromBottom ? .bottom : .top) {
+                GeometryReader { g in
+                    Rectangle()
+                        .frame(height: model.open ? g.size.height : 0)
+                        .frame(maxHeight: .infinity, alignment: fromBottom ? .bottom : .top)
+                }
+            }
+            .opacity(model.open ? 1 : 0.3)
             // Margin for the slide-in, except on the side that touches the dock.
             .padding(edgesAwayFromDock, 10)
             .fixedSize()
@@ -298,6 +345,7 @@ struct UnrollView: View {
                 model.scrollHeight = h
             }
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                model.size = size
                 model.height = size.height
                 HoverPanel.shared.contentSizeChanged()
             }

@@ -22,6 +22,7 @@
 		632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */; };
 		6AB95582B843A188A6B882A9 /* QuickNotesExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C13C9168F408D64AADCDA68 /* QuickNotesExport.swift */; };
 		7C227B986DAA3D63EF621C7F /* DockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F9F378EC332D7CADF2497B /* DockView.swift */; };
+		7C6FD345A2A694CE3A67F4E9 /* WhatsAppChats.swift in Sources */ = {isa = PBXBuildFile; fileRef = A978C5202EE0642DA2FA6033 /* WhatsAppChats.swift */; };
 		8187D90A6D495AA1CEF23EFE /* WeatherRadar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C35C8063FA42BC4822F3AAD /* WeatherRadar.swift */; };
 		908F1AB7D3BB410BD0F681BF /* HoverUnroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B08E70115B4613534F46521 /* HoverUnroll.swift */; };
 		9C29501B5809C478CF64FC3E /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BFBC845FC638B78B0DC11C0 /* Services.swift */; };
@@ -57,6 +58,7 @@
 		8BFBC845FC638B78B0DC11C0 /* Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services.swift; sourceTree = "<group>"; };
 		9A70E9B71AD4A15705B1191F /* CrohniqDock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrohniqDock.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5F9F378EC332D7CADF2497B /* DockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockView.swift; sourceTree = "<group>"; };
+		A978C5202EE0642DA2FA6033 /* WhatsAppChats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppChats.swift; sourceTree = "<group>"; };
 		BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspaces.swift; sourceTree = "<group>"; };
 		BCCFE524DA1E3DF7BA7BE2A4 /* Photos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Photos.swift; sourceTree = "<group>"; };
 		CAFF06EFA8605BD8E9798FB8 /* DockPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPanel.swift; sourceTree = "<group>"; };
@@ -84,6 +86,7 @@
 				BCCFE524DA1E3DF7BA7BE2A4 /* Photos.swift */,
 				3C13C9168F408D64AADCDA68 /* QuickNotesExport.swift */,
 				8BFBC845FC638B78B0DC11C0 /* Services.swift */,
+				A978C5202EE0642DA2FA6033 /* WhatsAppChats.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -246,6 +249,7 @@
 				4AA4A668EA32F5B12342E356 /* SystemWidgets.swift in Sources */,
 				31DBD80E6C9363B3712045DB /* UtilityWidgets.swift in Sources */,
 				8187D90A6D495AA1CEF23EFE /* WeatherRadar.swift in Sources */,
+				7C6FD345A2A694CE3A67F4E9 /* WhatsAppChats.swift in Sources */,
 				632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
