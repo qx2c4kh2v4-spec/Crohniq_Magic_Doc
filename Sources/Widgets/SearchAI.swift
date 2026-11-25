@@ -39,13 +39,21 @@ enum SearchEngine: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The older ChatGPT app ("ChatGPT Classic").
     static let chatGPTID = "com.openai.chat"
+    /// The current ChatGPT app (bundle id from its Codex base); takes a prompt via `codex://threads/new?prompt=`.
+    static let chatGPTNewID = "com.openai.codex"
+
+    /// The ChatGPT app to use: the current one when installed, otherwise ChatGPT Classic.
+    static var chatGPTAppID: String {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: chatGPTNewID) != nil ? chatGPTNewID : chatGPTID
+    }
     static let claudeID = "com.anthropic.claudefordesktop"
 
     var isAvailable: Bool {
         switch self {
         case .apple: true
-        case .chatgpt: NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.chatGPTID) != nil
+        case .chatgpt: NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.chatGPTAppID) != nil
         case .claude: NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.claudeID) != nil
         default: true
         }
@@ -93,7 +101,27 @@ enum SearchEngine: String, CaseIterable, Identifiable {
 
     /// ChatGPT app has no query URL: open it, start a new chat and paste the question (needs Accessibility).
     static func askChatGPT(_ q: String) {
-        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: chatGPTID) else { return }
+        // Current ChatGPT app: opens a new chat with the question already in it.
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: chatGPTNewID) != nil {
+            var link = URLComponents(string: "codex://threads/new")!
+            link.queryItems = [URLQueryItem(name: "prompt", value: q)]
+            if let url = link.url {
+                NSWorkspace.shared.open(url)
+                // Send it, if the question is only placed in the input field (needs Accessibility).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    guard AXIsProcessTrusted(),
+                          NSWorkspace.shared.frontmostApplication?.bundleIdentifier == chatGPTNewID else { return }
+                    key(36, [])
+                }
+                return
+            }
+        }
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: chatGPTID) else {
+            // No app installed: the website takes the question as a parameter.
+            let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+            if let u = URL(string: "https://chatgpt.com/?q=\(enc)") { NSWorkspace.shared.open(u) }
+            return
+        }
         copyToPasteboard(q)
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.activates = true
@@ -222,6 +250,74 @@ struct GeneralAIPanel: View {
             .padding(10)
         }
         .frame(width: 440)
+    }
+}
+
+/// Question field for the Claude or ChatGPT app, laid out like the Apple Intelligence widget.
+struct AIAppAskWidget: View {
+    let w: WidgetInstance
+    let engine: SearchEngine
+    @State private var question = ""
+    @State private var sent = false
+    @FocusState private var focused: Bool
+    @Environment(\.dockScale) private var s
+
+    private var bundleID: String { engine == .claude ? SearchEngine.claudeID : SearchEngine.chatGPTAppID }
+    private var tint: Color {
+        engine == .claude ? Color(red: 0.85, green: 0.47, blue: 0.34) : Color(red: 0.06, green: 0.64, blue: 0.5)
+    }
+    private var appIcon: NSImage? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID).map { NSWorkspace.shared.icon(forFile: $0.path) }
+    }
+
+    var body: some View {
+        HStack(spacing: 8 * s) {
+            Group {
+                if let appIcon {
+                    Image(nsImage: appIcon).resizable().scaledToFit().frame(width: 24 * s, height: 24 * s)
+                } else {
+                    Image(systemName: engine.symbol).font(.system(size: 20 * s, weight: .medium)).foregroundStyle(tint)
+                }
+            }
+            .onTapGesture { openApp() }
+            .help("\(engine.label) öffnen")
+            TextField(sent ? "Gesendet an \(engine.label) ✓" : "\(engine.label) fragen …", text: $question)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12 * s))
+                .focused($focused)
+                .onSubmit(submit)
+                .onTapGesture {
+                    NSApp.activate(ignoringOtherApps: true)
+                    focused = true
+                }
+            Button(action: submit) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 13 * s, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            .buttonStyle(.plain)
+            .disabled(question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Frage an \(engine.label) senden")
+        }
+        .tilePadding(s)
+    }
+
+    private func submit() {
+        let prompt = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        if engine == .claude { SearchEngine.askClaude(prompt) } else { SearchEngine.askChatGPT(prompt) }
+        question = ""
+        focused = false
+        sent = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { sent = false }
+    }
+
+    private func openApp() {
+        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+        } else if let url = URL(string: engine == .claude ? "https://claude.ai/new" : "https://chatgpt.com/") {
+            NSWorkspace.shared.open(url)
+        }
     }
 }
 

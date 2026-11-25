@@ -5,6 +5,8 @@ import SwiftUI
 
 final class UnrollModel: ObservableObject {
     @Published var open = false
+    /// Extra width for a column that opens to the right of the list (e.g. a conversation).
+    @Published var extraWidth: CGFloat = 0
     /// Height the whole list may take between the dock edge and the screen edge.
     @Published var available: CGFloat = .infinity
     /// Height of everything in the list except its scrolling part (header, buttons, padding).
@@ -137,7 +139,7 @@ final class HoverPanel {
         let vertical = DockStore.shared.vertical
         // Unroll away from the screen edge the bar sits on.
         let fromBottom = !vertical && anchor.midY < vis.midY
-        if ownerID != owner || !isVisible { model.open = false }
+        if ownerID != owner || !isVisible { model.open = false; model.extraWidth = 0 }
         ownerID = owner
 
         self.vertical = vertical
@@ -195,6 +197,12 @@ final class HoverPanel {
         model.size
     }
 
+    /// Widens the list by a column on its right, or closes that column with 0.
+    func setExtraWidth(_ width: CGFloat) {
+        guard model.extraWidth != width else { return }
+        model.extraWidth = width
+    }
+
     /// Room for the list between the dock's outer edge and the far screen edge.
     private func availableHeight(vis: NSRect) -> CGFloat {
         let dock = AppDelegate.shared.dock.windowFrame ?? anchor
@@ -227,8 +235,9 @@ final class HoverPanel {
         let margin: CGFloat = 10
         let sheet = size.width - margin * 2
         let shape = outline(dock, top: fromBottom)
-        var x = anchor.midX - size.width / 2
-        if let tab = shape.tab {
+        // A side column grows to the right; the list itself stays centred over its tile.
+        var x = anchor.midX - (size.width - model.extraWidth) / 2
+        if let tab = shape.tab, model.extraWidth == 0 {
             if tab.contains(anchor.midX) {
                 // Tile under the tab: keep the whole sheet on the tab.
                 if sheet <= tab.upperBound - tab.lowerBound {
@@ -324,7 +333,7 @@ struct UnrollView: View {
         let store = DockStore.shared
         let shape = RoundedRectangle(cornerRadius: store.corner + store.barPadding, style: .continuous)
         content
-            .frame(width: width)
+            .frame(width: width + model.extraWidth, alignment: .leading)
             .padding(.vertical, 12)
             .modifier(DockSheetSurface(shape: shape))
             .foregroundStyle(Theme.fg)

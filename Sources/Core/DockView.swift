@@ -476,24 +476,25 @@ private struct ReorderDrop: DropDelegate {
     }
 }
 
-/// A widget dragged well away from the bar (about five icon lengths) and released there is removed,
-/// like an icon dragged off the macOS Dock.
+/// A widget dragged out of the bar and released anywhere outside it is removed, like an icon
+/// dragged off the macOS Dock. It is never placed on the desktop.
 enum WidgetDragOut {
     private static var timer: Timer?
 
     static func begin(_ id: UUID, onEnd: @escaping () -> Void) {
         timer?.invalidate()
+        DropCatcher.shared.show()
         let t = Timer(timeInterval: 0.05, repeats: true) { t in
             guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
             t.invalidate()
             timer = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { DropCatcher.shared.hide() }
             let pointer = NSEvent.mouseLocation
-            // Only a clear pull-off removes it: released about five icon lengths away from the dock.
-            // Closer drops snap back; nothing is ever placed on the desktop.
+            // Released outside the dock (a small margin keeps slips at the edge from removing it).
             if let frame = AppDelegate.shared.dock.windowFrame,
-               distance(from: pointer, to: frame) >= DockStore.shared.unit * 5 {
+               distance(from: pointer, to: frame) >= max(12, DockStore.shared.unit * 0.25) {
                 withAnimation(.easeOut(duration: 0.2)) { DockStore.shared.remove(id) }
-                NSSound(named: "Pop")?.play()
+                NSAnimationEffect.poof.show(centeredAt: pointer, size: NSSize(width: 48, height: 48))
             }
             onEnd()
         }
@@ -506,6 +507,49 @@ enum WidgetDragOut {
         let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
         let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
         return (dx * dx + dy * dy).squareRoot()
+    }
+}
+
+/// Invisible surface behind the dock while a widget is dragged: it accepts the drop outside the dock,
+/// so macOS does not fly the widget image back, and nothing ever lands on the desktop.
+final class DropCatcher {
+    static let shared = DropCatcher()
+    private let panel: NSPanel
+
+    private init() {
+        panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        panel.isOpaque = false
+        // Almost transparent: fully clear windows let drags pass through to what lies below.
+        panel.backgroundColor = NSColor(white: 0, alpha: 0.002)
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        panel.contentView = CatcherView()
+    }
+
+    func show() {
+        let frame = NSScreen.screens.reduce(NSRect.null) { $0.union($1.frame) }
+        let dock = AppDelegate.shared.dock
+        panel.level = dock.windowLevel
+        panel.setFrame(frame, display: false)
+        panel.order(.below, relativeTo: dock.windowNumber)
+    }
+
+    func hide() { panel.orderOut(nil) }
+
+    private final class CatcherView: NSView {
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            registerForDraggedTypes([.string])
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        // Shown only while a widget is dragged, so every drag it sees is that widget.
+        override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .delete }
+        override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { .delete }
+        override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
+        // Removal itself happens in WidgetDragOut once the button is released outside the dock.
+        override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
     }
 }
 
@@ -858,6 +902,8 @@ struct WidgetHost: View {
         case .downloads: DownloadsWidget(w: instance)
         case .search: SearchWidget(w: instance)
         case .appleIntelligence: AppleIntelligenceWidget(w: instance)
+        case .claudeAsk: AIAppAskWidget(w: instance, engine: .claude)
+        case .chatGPTAsk: AIAppAskWidget(w: instance, engine: .chatgpt)
         case .shortcuts: ShortcutsWidget(w: instance)
         case .pomodoro: PomodoroWidget(w: instance)
         case .timer: CountdownTimerWidget(w: instance)

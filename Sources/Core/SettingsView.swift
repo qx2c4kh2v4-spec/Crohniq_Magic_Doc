@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case gallery, widgets, general, profiles, workspaces
+    case gallery, widgets, general, profiles, workspaces, permissions
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -13,6 +13,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .widgets: "In der Leiste"
         case .profiles: "Profile"
         case .workspaces: "Arbeitsbereiche"
+        case .permissions: "Freigaben"
         }
     }
     var symbol: String {
@@ -22,6 +23,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .widgets: "dock.rectangle"
         case .profiles: "person.2.crop.square.stack"
         case .workspaces: "rectangle.3.group"
+        case .permissions: "lock.shield"
         }
     }
 }
@@ -74,6 +76,7 @@ struct SettingsView: View {
                         case .widgets: WidgetSettings()
                         case .profiles: ProfileSettings()
                         case .workspaces: WorkspaceSettings()
+                        case .permissions: PermissionsView()
                         }
                     }
                     .padding(8)

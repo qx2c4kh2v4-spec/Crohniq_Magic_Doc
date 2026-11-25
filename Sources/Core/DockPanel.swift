@@ -93,6 +93,8 @@ final class DockPanelController: NSObject, NSWindowDelegate {
     func toggle() { isVisible ? hide() : show() }
 
     var windowFrame: NSRect? { panel.isVisible ? panel.frame : nil }
+    var windowNumber: Int { panel.windowNumber }
+    var windowLevel: NSWindow.Level { panel.level }
 
     private var screen: NSScreen {
         if let i = store.settings.screenIndex, NSScreen.screens.indices.contains(i) { return NSScreen.screens[i] }

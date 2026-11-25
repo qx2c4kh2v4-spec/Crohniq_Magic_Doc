@@ -73,11 +73,15 @@ enum WidgetCatalog {
         .init(id: "music.controls", kind: .nowPlaying, title: "Musik · Steuerung", detail: "Wiedergabe mit Bedienelementen",
               size: 4, config: [:]),
         .init(id: "ai.apple", kind: .appleIntelligence, title: "Apple Intelligence", detail: "Fragen direkt in der Widget-Leiste stellen",
+              size: 3, config: [:]),
+        .init(id: "ai.claude", kind: .claudeAsk, title: "Claude", detail: "Frage eintippen und direkt an die Claude-App senden",
+              size: 3, config: [:]),
+        .init(id: "ai.chatgpt", kind: .chatGPTAsk, title: "ChatGPT", detail: "Frage eintippen und direkt an die ChatGPT-App senden",
               size: 3, config: [:])
     ]
 
     static var items: [WidgetCatalogItem] {
-        let variantKinds: Set<WidgetKind> = [.clock, .calendar, .weather, .nowPlaying, .appleIntelligence]
+        let variantKinds: Set<WidgetKind> = [.clock, .calendar, .weather, .nowPlaying, .appleIntelligence, .claudeAsk, .chatGPTAsk]
         let defaults = WidgetKind.available
             .filter { !variantKinds.contains($0) }
             .map {

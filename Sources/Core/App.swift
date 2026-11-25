@@ -134,6 +134,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.target = self
         menu.addItem(settings)
 
+        let permissions = NSMenuItem(title: "Freigaben …", action: #selector(openPermissionsAction), keyEquivalent: "")
+        permissions.target = self
+        menu.addItem(permissions)
+
         let login = NSMenuItem(title: "Bei Anmeldung starten", action: #selector(toggleLogin), keyEquivalent: "")
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         login.target = self
@@ -183,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func openSettingsAction() { openSettings() }
+    @objc func openPermissionsAction() { openSettings(page: .permissions) }
 
     func openSettings(page: SettingsPage? = nil, selecting id: UUID? = nil) {
         if let id { DockStore.shared.editingWidgetID = id; SettingsNav.shared.page = .widgets }

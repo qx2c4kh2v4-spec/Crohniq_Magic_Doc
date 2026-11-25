@@ -846,6 +846,7 @@ struct LauncherHoverList: View {
     @State private var runningApp: NSRunningApplication?
     @State private var whatsAppChats: [WhatsAppChat] = []
     @State private var whatsAppError: String?
+    @State private var selectedChat: WhatsAppChat?
 
     private var appPath: String { app }
     private var itemCount: Int { w.fileCount(for: app) }
@@ -856,16 +857,37 @@ struct LauncherHoverList: View {
         let bundleID = Bundle(path: appPath)?.bundleIdentifier
         return ["com.apple.Safari", "org.mozilla.firefox"].contains(bundleID ?? "") ? bundleID : nil
     }
-    private var isWhatsApp: Bool { Bundle(path: appPath)?.bundleIdentifier == WhatsAppChats.bundleID }
+    private var messenger: Messenger? { Messenger.of(bundleID: Bundle(path: appPath)?.bundleIdentifier) }
     private var aiEngine: SearchEngine? {
         switch Bundle(path: appPath)?.bundleIdentifier {
-        case SearchEngine.chatGPTID: .chatgpt
+        case SearchEngine.chatGPTID, SearchEngine.chatGPTNewID: .chatgpt
         case SearchEngine.claudeID: .claude
         default: nil
         }
     }
 
     var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            listColumn.frame(width: 360)
+            if let chat = selectedChat {
+                Divider().padding(.vertical, -12)
+                WhatsAppConversationView(chat: chat) { selectChat(nil) }
+                    .frame(width: Self.conversationWidth)
+                    .id(chat.id)
+            }
+        }
+        .onAppear(perform: load)
+        .onDisappear { HoverPanel.shared.setExtraWidth(0) }
+    }
+
+    private static let conversationWidth: CGFloat = 380
+
+    private func selectChat(_ chat: WhatsAppChat?) {
+        selectedChat = chat
+        HoverPanel.shared.setExtraWidth(chat == nil ? 0 : Self.conversationWidth + 1)
+    }
+
+    private var listColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(nsImage: fileIcon(appPath)).resizable().frame(width: 22, height: 22)
@@ -923,12 +945,20 @@ struct LauncherHoverList: View {
                         }
                         Divider()
                     }
-                    if isWhatsApp {
+                    if let messenger {
                         Text("LETZTE CHATS").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
                         if !loaded {
                             ProgressView().controlSize(.small)
                         } else if whatsAppChats.isEmpty {
                             Text(whatsAppError ?? "Keine Chats gefunden.").font(.callout).foregroundStyle(Theme.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if whatsAppError != nil {
+                                Button("Freigaben einrichten …") {
+                                    AppDelegate.shared.openSettings(page: .permissions)
+                                    HoverPanel.shared.close()
+                                }
+                                .controlSize(.small)
+                            }
                         }
                         ForEach(whatsAppChats) { whatsAppRow($0) }
                     } else {
@@ -948,7 +978,6 @@ struct LauncherHoverList: View {
             .hoverListScroll(maxHeight: 400)
             if let runningApp { appActions(runningApp) }
         }
-        .onAppear(perform: load)
     }
 
     // MARK: Dock menu (windows, recent items, app actions)
@@ -1052,8 +1081,8 @@ struct LauncherHoverList: View {
         DispatchQueue.global(qos: .userInitiated).async {
             let r = AppLauncher.recentFiles(appPath: appPath, limit: recentLimit)
             diagLog("CrohniqDiag recent app=%@ count=%d running=%d", appPath, r.count, running == nil ? 0 : 1)
-            let chats = Bundle(path: appPath)?.bundleIdentifier == WhatsAppChats.bundleID
-                ? WhatsAppChats.load(limit: max(recentLimit, 12)) : nil
+            let chats = Messenger.of(bundleID: Bundle(path: appPath)?.bundleIdentifier)?
+                .loadChats(limit: max(recentLimit, 12))
             let history: (visits: [BrowserVisit], error: String?)?
             if let browserID {
                 history = BrowserHistory.load(bundleID: browserID, limit: historyLimit)
@@ -1081,12 +1110,11 @@ struct LauncherHoverList: View {
 
     private func whatsAppRow(_ chat: WhatsAppChat) -> some View {
         Button {
-            chat.open()
-            HoverPanel.shared.close()
+            selectChat(selectedChat == chat ? nil : chat)
         } label: {
             HStack(spacing: 8) {
                 ZStack {
-                    Circle().fill(Color(red: 0.15, green: 0.73, blue: 0.4).opacity(0.85))
+                    Circle().fill(chat.tint.opacity(0.85))
                     if chat.isGroup {
                         Image(systemName: "person.3.fill").font(.system(size: 10)).foregroundStyle(.white)
                     } else {
@@ -1104,15 +1132,17 @@ struct LauncherHoverList: View {
                          ? chat.date.formatted(date: .omitted, time: .shortened)
                          : chat.date.formatted(.dateTime.day().month(.abbreviated)))
                         .font(.caption2)
-                        .foregroundStyle(chat.unread > 0 ? Color(red: 0.15, green: 0.73, blue: 0.4) : Theme.secondary)
+                        .foregroundStyle(chat.unread > 0 ? chat.tint : Theme.secondary)
                     if chat.unread > 0 {
                         Text("\(chat.unread)")
                             .font(.caption2.weight(.bold)).monospacedDigit().foregroundStyle(.white)
                             .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
-                            .background(Capsule().fill(Color(red: 0.15, green: 0.73, blue: 0.4)))
+                            .background(Capsule().fill(chat.tint))
                     }
                 }
             }
+            .padding(.horizontal, 4).padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.fg.opacity(selectedChat == chat ? 0.12 : 0)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1537,5 +1567,193 @@ struct ClockHoverList: View {
                     .buttonStyle(.plain).help("Entfernen")
             }
         }
+    }
+}
+
+
+// MARK: - WhatsApp conversation
+
+/// The latest messages of one WhatsApp chat, shown beside the chat list.
+struct WhatsAppConversationView: View {
+    let chat: WhatsAppChat
+    let onClose: () -> Void
+    @Environment(\.hoverScrollCap) private var cap
+    @State private var messages: [WhatsAppMessage] = []
+    @State private var error: String?
+    @State private var loaded = false
+    @State private var draft = ""
+
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: chat.isGroup ? "person.3.fill" : "person.crop.circle.fill")
+                    .foregroundStyle(chat.tint)
+                Text(chat.name).font(.headline).lineLimit(1)
+                Spacer()
+                Button("In \(chat.messenger.label)") { chat.open(); HoverPanel.shared.close() }.controlSize(.small)
+                Button { onClose() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain).foregroundStyle(Theme.secondary)
+                    .help("Unterhaltung schliessen")
+            }
+            .padding(.horizontal, 12)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        if !loaded {
+                            ProgressView().controlSize(.small).frame(maxWidth: .infinity)
+                        } else if messages.isEmpty {
+                            Text(error ?? "Keine Nachrichten gefunden.").font(.callout).foregroundStyle(Theme.secondary)
+                        }
+                        ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            if index == 0 || !Calendar.current.isDate(message.date, inSameDayAs: messages[index - 1].date) {
+                                Text(dayLabel(message.date))
+                                    .font(.caption2.weight(.semibold)).foregroundStyle(Theme.secondary)
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background(Capsule().fill(Theme.fg.opacity(0.08)))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 4)
+                            }
+                            WhatsAppBubble(message: message).id(message.id)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                }
+                .frame(height: min(440, max(160, cap)))
+                .onChange(of: messages.count) { _, _ in
+                    if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
+            }
+
+            if chat.phone != nil {
+                HStack(spacing: 6) {
+                    TextField("Antwort vorbereiten …", text: $draft)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(send)
+                    Button(action: send) { Image(systemName: "paperplane.fill") }
+                        .buttonStyle(.plain).foregroundStyle(chat.tint)
+                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .help("Öffnet WhatsApp mit diesem Text – dort mit Enter senden")
+                }
+                .padding(.horizontal, 12)
+            }
+        }
+        .onAppear(perform: load)
+    }
+
+    private func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        chat.open(text: text)
+        draft = ""
+        HoverPanel.shared.close()
+    }
+
+    private func load() {
+        let chat = chat
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = WhatsAppChats.messages(of: chat)
+            DispatchQueue.main.async {
+                messages = result.messages
+                error = result.error
+                loaded = true
+            }
+        }
+    }
+
+    private func dayLabel(_ date: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return "Heute" }
+        if cal.isDateInYesterday(date) { return "Gestern" }
+        return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
+}
+
+private struct WhatsAppBubble: View {
+    let message: WhatsAppMessage
+
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    /// The text with web links, mail addresses and phone numbers made clickable.
+    static func linked(_ text: String) -> AttributedString {
+        var result = AttributedString(text)
+        guard let detector else { return result }
+        let ns = text as NSString
+        for match in detector.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            guard let url = match.url, let range = Range(match.range, in: text),
+                  let lower = AttributedString.Index(range.lowerBound, within: result),
+                  let upper = AttributedString.Index(range.upperBound, within: result) else { continue }
+            result[lower..<upper].link = url
+            result[lower..<upper].underlineStyle = .single
+        }
+        return result
+    }
+    @Environment(\.colorScheme) private var scheme
+    @State private var thumb: NSImage?
+
+    private var bubble: Color {
+        message.fromMe
+            ? (scheme == .dark ? Color(red: 0.0, green: 0.36, blue: 0.29) : Color(red: 0.85, green: 0.99, blue: 0.83))
+            : Theme.fg.opacity(scheme == .dark ? 0.14 : 0.08)
+    }
+
+    var body: some View {
+        if message.isSystem {
+            Text(message.text).font(.caption2).foregroundStyle(Theme.secondary)
+                .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+        } else {
+            HStack {
+                if message.fromMe { Spacer(minLength: 40) }
+                VStack(alignment: .leading, spacing: 3) {
+                    if !message.sender.isEmpty {
+                        Text(message.sender).font(.caption.weight(.semibold))
+                            .foregroundStyle(Color(hue: Double(message.sender.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF } % 360) / 360, saturation: 0.6, brightness: 0.75))
+                    }
+                    if let thumb {
+                        Image(nsImage: thumb).resizable().scaledToFit()
+                            .frame(maxWidth: 220, maxHeight: 220)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .onTapGesture { if let url = message.image { NSWorkspace.shared.open(url) } }
+                    }
+                    if !(message.image != nil && thumb != nil && message.text == "📷 Foto") {
+                        Text(Self.linked(message.text)).font(.callout).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .environment(\.openURL, OpenURLAction { url in
+                                NSWorkspace.shared.open(url)
+                                HoverPanel.shared.close()
+                                return .handled
+                            })
+                    }
+                    Text(message.date.formatted(date: .omitted, time: .shortened))
+                        .font(.system(size: 9)).foregroundStyle(Theme.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(bubble))
+                .frame(maxWidth: 280, alignment: message.fromMe ? .trailing : .leading)
+                if !message.fromMe { Spacer(minLength: 40) }
+            }
+            .task(id: message.id) {
+                guard let url = message.image else { return }
+                thumb = await Task.detached(priority: .utility) { () -> NSImage? in
+                    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+                          let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [
+                              kCGImageSourceCreateThumbnailFromImageAlways: true,
+                              kCGImageSourceCreateThumbnailWithTransform: true,
+                              kCGImageSourceThumbnailMaxPixelSize: 440,
+                          ] as CFDictionary) else { return nil }
+                    return NSImage(cgImage: cg, size: NSSize(width: cg.width / 2, height: cg.height / 2))
+                }.value
+            }
+        }
+    }
+}
+
+
+extension WhatsAppChat {
+    /// The messenger's own colour: WhatsApp green, Signal blue.
+    var tint: Color {
+        messenger == .signal ? Color(red: 0.23, green: 0.46, blue: 0.94) : Color(red: 0.15, green: 0.73, blue: 0.4)
     }
 }

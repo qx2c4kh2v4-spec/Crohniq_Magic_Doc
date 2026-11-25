@@ -41,7 +41,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
     case pomodoro, timer, focus, water, calendar, reminders, progress, stopwatch, notes, mail
     case battery, cpu, memory, disk, cpuGraph, toggles, audio, clipboard, screenshots, voiceMemo, emoji, photos, panoramas
     case colorPicker, converter, github, developerUsage, metric
-    case nexus, appleIntelligence, workspaces, launcher, quitApps, trash
+    case nexus, appleIntelligence, claudeAsk, chatGPTAsk, workspaces, launcher, quitApps, trash
 
     var id: String { rawValue }
 
@@ -94,6 +94,8 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .metric: "Kennzahl (JSON)"
         case .nexus: "Nexus-Suche & KI"
         case .appleIntelligence: "Apple Intelligence"
+        case .claudeAsk: "Claude"
+        case .chatGPTAsk: "ChatGPT"
         case .workspaces: "Arbeitsbereiche"
         case .launcher: "App-Starter"
         case .quitApps: "Apps beenden"
@@ -145,6 +147,8 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .metric: "chart.bar"
         case .nexus: "sparkle.magnifyingglass"
         case .appleIntelligence: "apple.intelligence"
+        case .claudeAsk: "sparkle"
+        case .chatGPTAsk: "bubble.left.and.text.bubble.right"
         case .workspaces: "rectangle.3.group"
         case .launcher: "app.badge"
         case .quitApps: "xmark.app"
@@ -155,7 +159,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
     var category: WidgetCategory {
         switch self {
         case .apps, .appSwitcher, .bookmarks, .fileShelf, .downloads, .finder, .dropbox, .shortcuts, .search, .nexus, .workspaces, .launcher, .trash: .apps
-        case .clock, .quitApps, .pomodoro, .timer, .focus, .appleIntelligence, .water, .calendar, .reminders, .progress, .stopwatch, .mail: .productivity
+        case .clock, .quitApps, .pomodoro, .timer, .focus, .appleIntelligence, .claudeAsk, .chatGPTAsk, .water, .calendar, .reminders, .progress, .stopwatch, .mail: .productivity
         case .weather, .nowPlaying, .battery, .cpu, .memory, .disk, .cpuGraph, .toggles, .audio,
              .clipboard, .screenshots, .voiceMemo, .emoji, .photos, .panoramas, .quitApps: .system
         case .notes, .colorPicker, .converter: .utility
@@ -181,7 +185,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .pomodoro: [1, 2, 3]
         case .timer: [1, 2, 3]
         case .focus: [1, 2, 3]
-        case .appleIntelligence: [2, 3, 4]
+        case .appleIntelligence, .claudeAsk, .chatGPTAsk: [2, 3, 4]
         case .water: [1, 2, 3]
         case .calendar: [1, 2, 3, 4]
         case .reminders: [1, 2, 3, 4]
@@ -220,7 +224,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .screenshots: 3
         case .nowPlaying, .toggles, .nexus: 4
         case .developerUsage: 4
-        case .workspaces, .launcher, .dropbox, .shortcuts, .appleIntelligence: 3
+        case .workspaces, .launcher, .dropbox, .shortcuts, .appleIntelligence, .claudeAsk, .chatGPTAsk: 3
         case .panoramas: 4
         default: 1
         }
@@ -689,6 +693,17 @@ final class DockStore: ObservableObject {
                 if !profiles[0].widgets.contains(where: { $0.kind == .shortcuts }) {
                     profiles[0].widgets.append(WidgetInstance(.shortcuts))
                 }
+                save()
+            }
+            // Claude und ChatGPT einmalig im aktiven Profil neben Apple Intelligence einfügen.
+            if !UserDefaults.standard.bool(forKey: "migrated.aiAskWidgets") {
+                UserDefaults.standard.set(true, forKey: "migrated.aiAskWidgets")
+                let i = activeIndex
+                var widgets = profiles[i].widgets
+                let at = (widgets.firstIndex { $0.kind == .appleIntelligence }).map { $0 + 1 } ?? widgets.count
+                let new = [WidgetKind.claudeAsk, .chatGPTAsk].filter { kind in !widgets.contains { $0.kind == kind } }
+                widgets.insert(contentsOf: new.map { WidgetInstance($0) }, at: at)
+                profiles[i].widgets = widgets
                 save()
             }
             // Der Papierkorb gehört wie im macOS-Dock ans rechte Ende jedes Profils.
