@@ -1,0 +1,97 @@
+# Crohniq Dock – Fastlane
+#
+# project.yml (XcodeGen) ist die Quelle der Wahrheit für Build-Einstellungen.
+# Jede Lane, die baut, erzeugt das Xcode-Projekt vorher neu.
+#
+#   fastlane mac generate   Xcode-Projekt aus project.yml erzeugen
+#   fastlane mac build      Debug-Build als Compile-Check
+#   fastlane mac archive    Release-App nach build/release bauen
+#   fastlane mac bump       Build-Nummer in project.yml um 1 erhöhen
+#   fastlane mac install    build/release-App nach /Applications kopieren und neu starten
+#   fastlane mac release    bump + archive + install (Optionen: bump:false install:false)
+
+default_platform(:mac)
+
+ROOT        = File.expand_path("..", __dir__)
+PROJECT_YML = File.join(ROOT, "project.yml")
+PROJECT     = File.join(ROOT, "CrohniqDock.xcodeproj")
+SCHEME      = "CrohniqDock"
+APP_NAME    = "Crohniq Dock"
+OUTPUT_DIR  = File.join(ROOT, "build", "release")
+DERIVED     = File.join(ROOT, "build", "DerivedData")
+
+def build_number
+  File.read(PROJECT_YML)[/CURRENT_PROJECT_VERSION:\s*"?(\d+)"?/, 1].to_i
+end
+
+def marketing_version
+  File.read(PROJECT_YML)[/MARKETING_VERSION:\s*"?([\d.]+)"?/, 1]
+end
+
+platform :mac do
+  desc "Xcode-Projekt aus project.yml erzeugen"
+  lane :generate do
+    Dir.chdir(ROOT) { sh("xcodegen", "generate", "--spec", PROJECT_YML) }
+  end
+
+  desc "Debug-Build als Compile-Check"
+  lane :build do
+    generate
+    xcodebuild(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Debug",
+      destination: "platform=macOS",
+      derivedDataPath: DERIVED,
+      build: true
+    )
+  end
+
+  desc "Build-Nummer in project.yml um 1 erhöhen"
+  lane :bump do
+    new_number = build_number + 1
+    yml = File.read(PROJECT_YML)
+    File.write(PROJECT_YML, yml.sub(/(CURRENT_PROJECT_VERSION:\s*)"?\d+"?/, "\\1\"#{new_number}\""))
+    UI.success("Build-Nummer: #{new_number}")
+    new_number
+  end
+
+  desc "Release-App nach build/release bauen"
+  lane :archive do
+    generate
+    build_mac_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "mac-application",
+      output_directory: OUTPUT_DIR,
+      output_name: APP_NAME,
+      derived_data_path: DERIVED,
+      archive_path: File.join(ROOT, "build", "#{SCHEME}.xcarchive"),
+      skip_package_pkg: true,
+      clean: true
+    )
+    UI.success("#{APP_NAME} #{marketing_version} (#{build_number}) → #{OUTPUT_DIR}")
+  end
+
+  desc "build/release-App nach /Applications kopieren und neu starten"
+  lane :install do
+    source = File.join(OUTPUT_DIR, "#{APP_NAME}.app")
+    target = "/Applications/#{APP_NAME}.app"
+    UI.user_error!("#{source} fehlt – zuerst `fastlane mac archive`") unless File.directory?(source)
+
+    sh("osascript", "-e", "quit app \"#{APP_NAME}\"", error_callback: ->(_) {})
+    sleep(1)
+    sh("rm", "-rf", target)
+    sh("ditto", source, target)
+    sh("open", target)
+    UI.success("#{target} installiert und gestartet")
+  end
+
+  desc "Build-Nummer erhöhen, Release bauen und installieren"
+  lane :release do |options|
+    bump unless options[:bump] == false
+    archive
+    install unless options[:install] == false
+  end
+end

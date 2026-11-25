@@ -1,0 +1,1 @@
+New: a permissions assistant that walks you through every access step by step. Signal chats now appear next to WhatsApp in the chat list, and lists stay neatly attached to the bar as they unfold.

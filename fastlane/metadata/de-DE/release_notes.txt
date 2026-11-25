@@ -1,0 +1,1 @@
+Neu: Freigaben-Assistent, der dich Schritt für Schritt durch alle Berechtigungen führt. Signal-Chats erscheinen jetzt neben WhatsApp in der Chat-Liste, und Listen bleiben beim Aufklappen sauber an der Leiste.

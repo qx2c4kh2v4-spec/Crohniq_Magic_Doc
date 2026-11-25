@@ -1,0 +1,1 @@
+widgets,dock,produktivität,kalender,wetter,pomodoro,zwischenablage,launcher,fokus,menüleiste,ki

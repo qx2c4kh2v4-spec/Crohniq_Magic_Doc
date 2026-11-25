@@ -1,0 +1,1 @@
+widgets,dock,productivity,calendar,weather,pomodoro,clipboard,launcher,focus,menu bar,ai,workspace
