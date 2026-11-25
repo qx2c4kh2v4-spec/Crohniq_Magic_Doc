@@ -1,3 +1,4 @@
+import CoreServices
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -95,6 +96,57 @@ enum AppLauncher {
             if result.count >= limit { break }
         }
         return result
+    }
+
+    /// Recent documents of an app. Many apps keep no macOS list; for those, Spotlight supplies
+    /// the files used most recently that the app can open (from its declared document types).
+    static func recentFiles(appPath: String, limit: Int) -> [URL] {
+        guard let bundle = Bundle(path: appPath) else { return [] }
+        let own = recentDocuments(bundleID: bundle.bundleIdentifier ?? "", limit: limit)
+        if !own.isEmpty { return own }
+        // Browsers show their history instead of files.
+        if ["com.apple.Safari", "org.mozilla.firefox"].contains(bundle.bundleIdentifier ?? "") { return [] }
+        return spotlightRecent(bundle: bundle, limit: limit)
+    }
+
+    /// Types every file conforms to; an app declaring only these would match everything.
+    private static let genericTypes: Set<String> = [
+        "public.item", "public.data", "public.content", "public.composite-content", "public.directory",
+        "public.folder", "com.apple.package", "public.archive", "public.text", "public.plain-text",
+        "public.utf8-plain-text", "public.url", "public.file-url", "com.apple.application", "com.apple.bundle",
+    ]
+
+    static func spotlightRecent(bundle: Bundle, limit: Int) -> [URL] {
+        guard let docTypes = bundle.infoDictionary?["CFBundleDocumentTypes"] as? [[String: Any]] else { return [] }
+        var types = Set<String>()
+        for docType in docTypes {
+            if (docType["CFBundleTypeRole"] as? String) == "None" { continue }
+            for id in docType["LSItemContentTypes"] as? [String] ?? [] where !genericTypes.contains(id) {
+                types.insert(id)
+            }
+            for ext in docType["CFBundleTypeExtensions"] as? [String] ?? [] where ext != "*" {
+                if let type = UTType(filenameExtension: ext), !genericTypes.contains(type.identifier) {
+                    types.insert(type.identifier)
+                }
+            }
+        }
+        guard !types.isEmpty else { return [] }
+        let clause = types.sorted().prefix(80).map { "kMDItemContentTypeTree == \"\($0)\"" }.joined(separator: " || ")
+        let text = "kMDItemLastUsedDate >= $time.today(-90) && (\(clause))"
+        guard let query = MDQueryCreate(kCFAllocatorDefault, text as CFString, nil, nil) else { return [] }
+        MDQuerySetSearchScope(query, [kMDQueryScopeHome] as CFArray, 0)
+        guard MDQueryExecute(query, CFOptionFlags(kMDQuerySynchronous.rawValue)) else { return [] }
+        var found: [(url: URL, used: Date)] = []
+        for i in 0..<MDQueryGetResultCount(query) {
+            guard let raw = MDQueryGetResultAtIndex(query, i) else { continue }
+            let item = Unmanaged<MDItem>.fromOpaque(raw).takeUnretainedValue()
+            guard let path = MDItemCopyAttribute(item, kMDItemPath) as? String,
+                  let used = MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date,
+                  !path.contains("/Library/"), !path.contains("/."),
+                  FileManager.default.fileExists(atPath: path) else { continue }
+            found.append((URL(fileURLWithPath: path), used))
+        }
+        return found.sorted { $0.used > $1.used }.prefix(limit).map(\.url)
     }
 
     private static func sharedFileListItems(in data: Data) -> [[String: Any]]? {
@@ -227,7 +279,7 @@ struct LauncherWidget: View {
                     ForEach(0..<rows, id: \.self) { row in
                         GridRow {
                             ForEach(0..<columns, id: \.self) { column in
-                                slot(shown[safe: row * columns + column], icon: 22)
+                                slot(shown[safe: row * columns + column], icon: DockStore.gridIcon)
                             }
                         }
                     }
@@ -235,7 +287,7 @@ struct LauncherWidget: View {
             } else {
                 HStack(spacing: 3 * s) {
                     ForEach(shown, id: \.self) { app in
-                        slot(app, icon: w.size == 1 ? 44 : (w.size == 2 ? 34 : 38))
+                        slot(app, icon: DockStore.launcherIcon(size: w.size, showsName: w.size > 1 && list.count <= w.size))
                     }
                     if w.size > 1 {
                         Button { LauncherStore.pickApps(w) } label: {
@@ -454,7 +506,7 @@ struct LauncherPicker: View {
         .frame(width: 640)
         .onAppear {
             DispatchQueue.global(qos: .userInitiated).async {
-                let r = Bundle(path: app).map { AppLauncher.recentDocuments(bundleID: $0.bundleIdentifier ?? "", limit: limit) } ?? []
+                let r = AppLauncher.recentFiles(appPath: app, limit: limit)
                 let files: [URL]
                 if showsFolder, !forkLiftFolder.isEmpty {
                     files = (try? FileManager.default.contentsOfDirectory(

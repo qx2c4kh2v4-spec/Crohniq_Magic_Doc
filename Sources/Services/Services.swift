@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import AVFoundation
 import Combine
 import CoreAudio
@@ -732,29 +733,153 @@ final class EventStore: ObservableObject {
 
 // MARK: - Clipboard history
 
+/// One entry of the clipboard history: text, copied files, or an image (kept as a PNG on disk).
+struct ClipEntry: Codable, Identifiable, Equatable {
+    enum Kind: String, Codable { case text, files, image }
+    var id = UUID()
+    var kind: Kind
+    /// Text, file paths separated by newlines, or the image's content hash.
+    var value: String
+    var width = 0
+    var height = 0
+    var date = Date()
+
+    var paths: [String] { value.split(separator: "\n").map(String.init) }
+    var imageURL: URL { ClipboardHistory.folder.appendingPathComponent(id.uuidString + ".png") }
+
+    /// One-line label for lists and the widget.
+    var title: String {
+        switch kind {
+        case .text: value
+        case .files: paths.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
+        case .image: width > 0 ? "Bild · \(width) × \(height)" : "Bild"
+        }
+    }
+}
+
 final class ClipboardHistory: ObservableObject {
     static let shared = ClipboardHistory()
-    @Published var items: [String] = []
-    private var changeCount = NSPasteboard.general.changeCount
+    private static let key = "clipboard.history.v2"
+    private static let limit = 40
+    static let folder: URL = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = base.appendingPathComponent("Crohniq Dock/Clipboard", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+
+    @Published private(set) var items: [ClipEntry] = [] {
+        didSet {
+            if let data = try? JSONEncoder().encode(items) { UserDefaults.standard.set(data, forKey: Self.key) }
+        }
+    }
+    private var changeCount = -1
     private var timer: Timer?
+    private let thumbs = NSCache<NSString, NSImage>()
 
     private init() {
-        timer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in self?.check() }
+        if let data = UserDefaults.standard.data(forKey: Self.key),
+           let saved = try? JSONDecoder().decode([ClipEntry].self, from: data) {
+            items = saved.filter { $0.kind != .image || FileManager.default.fileExists(atPath: $0.imageURL.path) }
+        } else if let old = UserDefaults.standard.stringArray(forKey: "clipboard.history.v1") {
+            items = old.map { ClipEntry(kind: .text, value: $0) }
+        }
+        check()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in self?.check() }
     }
+
+    /// Starts recording at launch, so copies are kept even before the widget is shown.
+    func start() {}
 
     private func check() {
         let pb = NSPasteboard.general
         guard pb.changeCount != changeCount else { return }
         changeCount = pb.changeCount
-        guard let s = pb.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty,
-              s.count < 20_000 else { return }
-        items.removeAll { $0 == s }
-        items.insert(s, at: 0)
-        if items.count > 30 { items.removeLast(items.count - 30) }
+        // Passwords and other concealed content stay out of the history.
+        if pb.types?.contains(NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")) == true { return }
+
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            add(ClipEntry(kind: .files, value: urls.map(\.path).joined(separator: "\n")))
+            return
+        }
+        let text = pb.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasImage = pb.availableType(from: [.png, .tiff]) != nil
+        if hasImage, text.isEmpty || pb.availableType(from: [.png, .tiff, .string]) != .string,
+           let image = NSImage(pasteboard: pb), let entry = saveImage(image) {
+            add(entry)
+            return
+        }
+        guard !text.isEmpty, text.count < 50_000 else { return }
+        add(ClipEntry(kind: .text, value: text))
     }
 
-    func copy(_ s: String) {
-        copyToPasteboard(s)
+    private func saveImage(_ image: NSImage) -> ClipEntry? {
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]), png.count < 60_000_000 else { return nil }
+        let hash = SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
+        if let existing = items.first(where: { $0.kind == .image && $0.value == hash }) { return existing }
+        let entry = ClipEntry(kind: .image, value: hash, width: rep.pixelsWide, height: rep.pixelsHigh)
+        do { try png.write(to: entry.imageURL) } catch { return nil }
+        return entry
+    }
+
+    private func add(_ entry: ClipEntry) {
+        var list = items
+        if let i = list.firstIndex(where: { $0.kind == entry.kind && $0.value == entry.value }) {
+            var moved = list.remove(at: i)
+            moved.date = Date()
+            list.insert(moved, at: 0)
+        } else {
+            list.insert(entry, at: 0)
+        }
+        while list.count > Self.limit { deleteFile(list.removeLast()) }
+        items = list
+    }
+
+    /// A small preview of an image entry, cached.
+    func thumbnail(_ entry: ClipEntry) -> NSImage? {
+        guard entry.kind == .image else { return nil }
+        if let cached = thumbs.object(forKey: entry.id.uuidString as NSString) { return cached }
+        guard let src = CGImageSourceCreateWithURL(entry.imageURL as CFURL, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 520,
+              ] as CFDictionary) else { return nil }
+        let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        thumbs.setObject(image, forKey: entry.id.uuidString as NSString)
+        return image
+    }
+
+    /// Puts the entry back on the clipboard and moves it to the top.
+    func copy(_ entry: ClipEntry) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        switch entry.kind {
+        case .text: pb.setString(entry.value, forType: .string)
+        case .files: pb.writeObjects(entry.paths.map { URL(fileURLWithPath: $0) as NSURL })
+        case .image:
+            if let image = NSImage(contentsOf: entry.imageURL) { pb.writeObjects([image]) }
+        }
+        changeCount = pb.changeCount
+        add(entry)
+    }
+
+    func copy(_ s: String) { copy(ClipEntry(kind: .text, value: s)) }
+
+    func remove(_ entry: ClipEntry) {
+        deleteFile(entry)
+        items.removeAll { $0.id == entry.id }
+    }
+
+    func clear() {
+        items.forEach(deleteFile)
+        items = []
+    }
+
+    private func deleteFile(_ entry: ClipEntry) {
+        guard entry.kind == .image else { return }
+        try? FileManager.default.removeItem(at: entry.imageURL)
+        thumbs.removeObject(forKey: entry.id.uuidString as NSString)
     }
 }
 

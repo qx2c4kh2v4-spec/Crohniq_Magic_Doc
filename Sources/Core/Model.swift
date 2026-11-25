@@ -298,9 +298,9 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
                          help: "Anzahl der Fotos im Widget und Aufklappbereich (1–12).")]
         case .panoramas:
             [ConfigField(key: "count", label: "Bilder im Wechsel", kind: .number,
-                         help: "Anzahl der Panorama-Fotos und Apple-Hintergrundbilder (1–50)."),
-             ConfigField(key: "interval", label: "Hintergrund wechseln alle … Sekunden", kind: .number,
-                         help: "Empfohlen: 300 Sekunden (5 Minuten). Minimum: 30 Sekunden.")]
+                         help: "Anzahl der Panorama-Fotos und Apple-Hintergrundbilder im automatischen Wechsel (1–50). Die Liste beim Überfahren zeigt immer bis zu 50."),
+             ConfigField(key: "interval", label: "Hintergrund wechseln alle … Sekunden (0 = kein Wechsel)", kind: .number,
+                         help: "0 = Stillstand, das Bild bleibt. Empfohlen: 300 Sekunden (5 Minuten). Minimum: 30 Sekunden.")]
         case .bookmarks:
             [ConfigField(key: "source", label: "Quelle", kind: .choice([("safari", "Safari-Lesezeichen"), ("custom", "Eigene Liste")])),
              ConfigField(key: "folder", label: "Safari-Ordner auf der Kachel", placeholder: "leer = Favoritenleiste",
@@ -460,6 +460,13 @@ extension WidgetKind {
     var hugsIcon: Bool { self == .launcher || self == .apps }
 }
 
+extension WidgetInstance {
+    /// Mail, Finder and Quick Note at size 1 are a plain app icon, as large as the launcher icons.
+    var isAppIcon: Bool { size == 1 && [.mail, .finder, .notes].contains(kind) }
+    /// Drawn without tile background, like a Dock icon.
+    var hugsIcon: Bool { kind.hugsIcon || isAppIcon }
+}
+
 enum AppLanguage: String, CaseIterable, Identifiable {
     case system = "system"
     case bulgarian = "bg"
@@ -607,6 +614,10 @@ struct DockSettings: Codable, Equatable {
     var hoverLists: Bool? = nil
     /// Tint strength of the glass (0 = clear glass).
     var glassTint: Double? = nil
+    /// Scale of the whole dock (header, spacing and widgets), 1 = 100 %.
+    var dockScale: Double? = nil
+    /// Show the app's macOS Dock menu (windows, recent chats …) in the hover list.
+    var readDockMenus: Bool? = nil
 }
 
 // MARK: - Store
@@ -680,13 +691,21 @@ final class DockStore: ObservableObject {
                 }
                 save()
             }
+            // Der Papierkorb gehört wie im macOS-Dock ans rechte Ende jedes Profils.
+            if !UserDefaults.standard.bool(forKey: "migrated.trashWidget") {
+                UserDefaults.standard.set(true, forKey: "migrated.trashWidget")
+                for i in profiles.indices where !profiles[i].widgets.contains(where: { $0.kind == .trash }) {
+                    profiles[i].widgets.append(WidgetInstance(.trash))
+                }
+                save()
+            }
         } else {
             let main = DockProfile(name: "Standard", widgets: [
                 WidgetInstance(.clock), WidgetInstance(.weather), WidgetInstance(.nexus),
                 WidgetInstance(.workspaces), WidgetInstance(.bookmarks), WidgetInstance(.launcher),
                 WidgetInstance(Hardware.hasBattery ? .battery : .cpu), WidgetInstance(.calendar), WidgetInstance(.nowPlaying),
                 WidgetInstance(.audio), WidgetInstance(.clipboard), WidgetInstance(.screenshots), WidgetInstance(.shortcuts),
-                WidgetInstance(.finder), WidgetInstance(.mail), WidgetInstance(.photos),
+                WidgetInstance(.finder), WidgetInstance(.mail), WidgetInstance(.photos), WidgetInstance(.trash),
             ])
             let focus = DockProfile(name: "Fokus", widgets: [
                 WidgetInstance(.clock), WidgetInstance(.pomodoro), WidgetInstance(.reminders),
@@ -696,11 +715,14 @@ final class DockStore: ObservableObject {
             activeProfileID = main.id
             settings = DockSettings()
         }
+        // Schnellnotizen für Crohniq Nexus IQ bereitstellen (auch ohne Änderung seit dem letzten Start).
+        QuickNotesExport.writeNow(profiles)
     }
 
     private func save() {
         let p = Persisted(profiles: profiles, active: activeProfileID, settings: settings)
         if let data = try? JSONEncoder().encode(p) { UserDefaults.standard.set(data, forKey: key) }
+        QuickNotesExport.schedule(profiles)
     }
 
     var activeIndex: Int { profiles.firstIndex { $0.id == activeProfileID } ?? 0 }
@@ -841,11 +863,16 @@ final class DockStore: ObservableObject {
     }
 
     // Layout metrics
-    var unit: CGFloat { CGFloat(settings.tileSize) }
-    var gap: CGFloat { max(3, (unit * 0.06).rounded()) }
-    var barPadding: CGFloat { max(3, (unit * 0.06).rounded()) }
+    /// Whole-dock scale from the "Dock-Grösse" slider.
+    var dockScale: CGFloat { CGFloat(min(max(settings.dockScale ?? 1, 0.6), 1.5)) }
+    /// Widget tile size: the "Widget-Grösse" slider, scaled with the dock.
+    var unit: CGFloat { CGFloat(settings.tileSize) * dockScale }
+    /// Spacing and frame follow the dock size, not the widget size.
+    private var chrome: CGFloat { 64 * dockScale }
+    var gap: CGFloat { max(2, (chrome * 0.06).rounded()) }
+    var barPadding: CGFloat { max(2, (chrome * 0.05).rounded()) }
     var corner: CGFloat { unit * 0.26 }
-    var grip: CGFloat { (unit * 0.19).rounded() }
+    var grip: CGFloat { max(8, (chrome * 0.19).rounded()) }
     var vertical: Bool { settings.position.isVertical || (settings.position == .free && settings.freeVertical == true) }
 
     func width(for units: Int) -> CGFloat {
@@ -861,46 +888,40 @@ final class DockStore: ObservableObject {
         }
     }
 
+    /// App icons fill the widget height: one icon is as tall as a widget, a 2×2 grid splits that height.
+    static let iconGap: CGFloat = 3
+    static let gridIcon: CGFloat = (64 - iconGap) / 2
+    static func launcherIcon(size: Int, showsName: Bool) -> CGFloat { showsName ? 52 : 64 }
+
     private func launcherTileSize(_ widget: WidgetInstance) -> CGSize {
         let s = unit / 64
         let apps = widget.launcherApps
-        if apps.isEmpty { return CGSize(width: 28 * s, height: 28 * s) }
+        let spacing = Self.iconGap * s
+        if apps.isEmpty { return CGSize(width: unit, height: unit) }
         if widget.size == 1 && apps.count > 1 {
-            let icon = 22 * s
-            let spacing = 3 * s
-            let shown = min(apps.count, 4)
-            let columns = min(2, shown)
-            let rows = Int(ceil(Double(shown) / Double(columns)))
-            return CGSize(
-                width: CGFloat(columns) * icon + CGFloat(columns - 1) * spacing,
-                height: CGFloat(rows) * icon + CGFloat(rows - 1) * spacing
-            )
+            let columns = min(2, min(apps.count, 4))
+            let icon = Self.gridIcon * s
+            return CGSize(width: CGFloat(columns) * icon + CGFloat(columns - 1) * spacing, height: unit)
         }
-        let icon = (widget.size == 1 ? 44 : (widget.size == 2 ? 34 : 38)) * s
         let capacity = widget.size == 1 ? 1 : (widget.size == 2 ? 2 : 3)
         let shown = min(apps.count, capacity)
-        let spacing = 3 * s
         let showsName = widget.size > 1 && apps.count <= widget.size
+        let icon = Self.launcherIcon(size: widget.size, showsName: showsName) * s
         var width = CGFloat(shown) * icon + CGFloat(max(0, shown - 1)) * spacing
         if widget.size > 1 { width += spacing + 24 * s }
-        let height = icon + (showsName ? 12 * s : 0)
-        return CGSize(width: width, height: height)
+        return CGSize(width: width, height: unit)
     }
 
     private func appsTileSize(_ widget: WidgetInstance) -> CGSize {
         let s = unit / 64
         let count = widget.cfg("paths").split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
-        if count == 0 { return CGSize(width: 28 * s, height: 28 * s) }
-        let icon = (widget.size == 1 ? 22 : 26) * s
-        let spacing = 3 * s
+        if count == 0 { return CGSize(width: unit, height: unit) }
+        let icon = Self.gridIcon * s
+        let spacing = Self.iconGap * s
         let capacity = widget.size == 1 ? 4 : widget.size * 2 + (widget.size - 1)
         let shown = min(count, capacity)
         let columns = widget.size == 1 ? min(2, shown) : max(1, Int(ceil(Double(shown) / 2)))
-        let rows = Int(ceil(Double(shown) / Double(columns)))
-        return CGSize(
-            width: CGFloat(columns) * icon + CGFloat(max(0, columns - 1)) * spacing,
-            height: CGFloat(rows) * icon + CGFloat(max(0, rows - 1)) * spacing
-        )
+        return CGSize(width: CGFloat(columns) * icon + CGFloat(max(0, columns - 1)) * spacing, height: unit)
     }
 
     var dockRowSize: CGSize {
@@ -916,7 +937,7 @@ final class DockStore: ObservableObject {
     }
 
     var profileStripWidth: CGFloat {
-        let scale = unit / 64
+        let scale = dockScale
         let tabs = profiles.reduce(CGFloat.zero) { total, profile in
             let textWidth = CGFloat(profile.name.count) * 6.2
             let selectionMark: CGFloat = profile.id == activeProfileID ? 12 : 0
@@ -926,7 +947,9 @@ final class DockStore: ObservableObject {
         return (tabs + gaps + 24 + 6) * scale
     }
 
-    var profileStripHeight: CGFloat { 28 * unit / 64 }
+    var profileStripHeight: CGFloat { 20 * dockScale }
+    /// Space between the header strip and the tiles.
+    var headerGap: CGFloat { max(2, (gap / 2).rounded()) }
 
     /// Header above or below the tiles: workspace symbols, open apps, profiles.
     var showsHeader: Bool {
@@ -937,8 +960,8 @@ final class DockStore: ObservableObject {
     var workspaceSymbolStripWidth: CGFloat {
         let count = WorkspaceManager.shared.workspaces.count
         guard count > 0 else { return 0 }
-        let scale = unit / 64
-        return (CGFloat(count) * 22 + CGFloat(max(0, count - 1)) * 3 + 6) * scale
+        let scale = dockScale
+        return (CGFloat(count) * 18 + CGFloat(max(0, count - 1)) * 3 + 6) * scale
     }
 
     /// Open apps sit to the right of the workspace symbols, at the same 22 pt size.
@@ -946,9 +969,9 @@ final class DockStore: ObservableObject {
         guard !WorkspaceManager.shared.workspaces.isEmpty else { return 0 }
         let count = RunningApps.shared.apps.count
         guard count > 0 else { return 0 }
-        let scale = unit / 64
+        let scale = dockScale
         let shown = min(count, 12)
-        let icons = CGFloat(shown) * 22 + CGFloat(max(0, shown - 1)) * 4
+        let icons = CGFloat(shown) * 18 + CGFloat(max(0, shown - 1)) * 4
         return (icons + 6 + 34 + 8) * scale
     }
 
@@ -968,16 +991,20 @@ final class DockStore: ObservableObject {
         return sum
     }
 
+    /// Header symbols, open apps, profiles and the app badge, side by side.
+    var headerContentWidth: CGFloat { headerClusterWidth + gap + 172 * dockScale }
+
+    /// Width of the raised part of the bar that holds the header.
+    var headerTabWidth: CGFloat { headerContentWidth + barPadding * 4 }
+
     var profileHeaderWidth: CGFloat {
-        let badge = 172 * unit / 64
-        // Equal side margins keep the cluster centered while the badge stays at the trailing edge.
-        return max(dockRowSize.width, headerClusterWidth + (badge + gap) * 2)
+        max(dockRowSize.width, headerTabWidth - barPadding * 2)
     }
 
     var contentSize: CGSize {
         let row = dockRowSize
         let width = (showsHeader ? profileHeaderWidth : row.width) + barPadding * 2
-        let height = row.height + (showsHeader ? profileStripHeight + gap : 0) + barPadding * 2
+        let height = row.height + (showsHeader ? profileStripHeight + headerGap : 0) + barPadding * 2
         return CGSize(width: width, height: height)
     }
 }

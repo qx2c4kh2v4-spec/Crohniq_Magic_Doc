@@ -200,15 +200,34 @@ struct ClipboardWidget: View {
     let w: WidgetInstance
     @ObservedObject private var clip = ClipboardHistory.shared
     @Environment(\.dockScale) private var s
-    @State private var open = false
 
     var body: some View {
+        let latest = clip.items.first
         HStack(spacing: 8 * s) {
-            Image(systemName: "clock.arrow.circlepath").font(.system(size: 20 * s))
+            ZStack(alignment: .topTrailing) {
+                if w.size > 1, let latest, let thumb = clip.thumbnail(latest) {
+                    Image(nsImage: thumb).resizable().scaledToFill()
+                        .frame(width: 36 * s, height: 36 * s)
+                        .clipShape(RoundedRectangle(cornerRadius: 6 * s, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 6 * s, style: .continuous).strokeBorder(.white.opacity(0.3), lineWidth: 0.75))
+                } else {
+                    Image(systemName: "doc.on.clipboard").font(.system(size: 20 * s))
+                }
+                if !clip.items.isEmpty && w.size == 1 {
+                    Text("\(clip.items.count)")
+                        .font(.system(size: 7 * s, weight: .bold)).monospacedDigit()
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 3 * s)
+                        .frame(minWidth: 12 * s, minHeight: 12 * s)
+                        .background(Capsule().fill(Color.accentColor))
+                        .offset(x: 7 * s, y: -5 * s)
+                }
+            }
             if w.size > 1 {
                 VStack(alignment: .leading, spacing: 2 * s) {
                     Text("Zwischenablage").font(.system(size: 10 * s)).foregroundStyle(Theme.secondary)
-                    Text(clip.items.first ?? "leer").font(.system(size: 11 * s, weight: .medium)).lineLimit(2)
+                    Text(latest?.title ?? "leer")
+                        .font(.system(size: 11 * s, weight: .medium)).lineLimit(2)
                 }
                 Spacer(minLength: 0)
             }
@@ -216,32 +235,87 @@ struct ClipboardWidget: View {
         .tilePadding(s)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture { open = true }
-        .popover(isPresented: $open) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Copy & Paste – Klick kopiert").font(.headline).padding(10)
-                Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(clip.items, id: \.self) { item in
-                            Button {
-                                clip.copy(item)
-                                open = false
-                            } label: {
-                                Text(item).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 10).padding(.vertical, 6).contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            Divider()
-                        }
-                    }
-                }
-                .frame(maxHeight: 380)
+        .help("Zwischenablage – Maus darüber zeigt den Verlauf")
+    }
+}
+
+/// Clipboard history in the dock's hover list, newest first; a click copies the entry back.
+struct ClipboardHoverList: View {
+    @ObservedObject private var clip = ClipboardHistory.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "doc.on.clipboard").font(.title3)
+                Text("Zwischenablage").font(.headline)
+                Spacer()
                 if !clip.items.isEmpty {
-                    Button("Verlauf leeren") { clip.items.removeAll() }.padding(10)
+                    Button("Leeren") { clip.clear() }.controlSize(.small)
                 }
             }
-            .frame(width: 340)
+            .padding(.horizontal, 12)
+            if clip.items.isEmpty {
+                Text("Noch nichts kopiert. Kopierte Texte, Bilder und Dateien erscheinen hier.")
+                    .font(.callout).foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, 12)
+            } else {
+                Text("ZULETZT KOPIERT · KLICK KOPIERT ERNEUT").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, 12)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(clip.items.enumerated()), id: \.element.id) { index, entry in
+                            ClipboardRow(entry: entry, current: index == 0)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                }
+                .hoverListScroll(maxHeight: 420)
+            }
+        }
+    }
+}
+
+private struct ClipboardRow: View {
+    let entry: ClipEntry
+    let current: Bool
+    @State private var hover = false
+
+    var body: some View {
+        HStack(alignment: entry.kind == .image ? .top : .center, spacing: 8) {
+            if entry.kind == .image {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let thumb = ClipboardHistory.shared.thumbnail(entry) {
+                        Image(nsImage: thumb).resizable().scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: 140, alignment: .leading)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(current ? Color.accentColor : .white.opacity(0.25), lineWidth: current ? 2 : 0.75))
+                    }
+                    HStack(spacing: 4) {
+                        if current { Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.accentColor) }
+                        Text(entry.title).font(.caption).foregroundStyle(Theme.secondary)
+                        Text(entry.date, style: .relative).font(.caption).foregroundStyle(Theme.secondary)
+                    }
+                }
+            } else {
+                Image(systemName: entry.kind == .files ? "doc" : (current ? "checkmark.circle.fill" : "text.alignleft"))
+                    .foregroundStyle(current ? Color.accentColor : Theme.secondary)
+                    .frame(width: 16)
+                Text(entry.title).lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if hover {
+                Button { ClipboardHistory.shared.remove(entry) } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain).foregroundStyle(Theme.secondary)
+                    .help("Aus dem Verlauf entfernen")
+            }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.fg.opacity(hover ? 0.1 : 0)))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .onTapGesture {
+            ClipboardHistory.shared.copy(entry)
+            HoverPanel.shared.close()
         }
     }
 }
@@ -932,11 +1006,12 @@ struct PanoramasHoverList: View {
     }
 
     private func nativePixelSize(for screen: NSScreen) -> (width: Int, height: Int) {
-        if let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
-            let displayID = CGDirectDisplayID(number.uint32Value)
-            let width = CGDisplayPixelsWide(displayID)
-            let height = CGDisplayPixelsHigh(displayID)
-            if width > 0, height > 0 { return (width, height) }
+        // CGDisplayPixelsWide reports points on Retina screens; the display mode knows the real pixels.
+        if let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+           let mode = CGDisplayCopyDisplayMode(CGDirectDisplayID(number.uint32Value)),
+           mode.pixelWidth > 0, mode.pixelHeight > 0 {
+            let backing = (Int(screen.frame.width * screen.backingScaleFactor), Int(screen.frame.height * screen.backingScaleFactor))
+            return (max(mode.pixelWidth, backing.0), max(mode.pixelHeight, backing.1))
         }
         let width = Int(screen.frame.width * screen.backingScaleFactor)
         let height = Int(screen.frame.height * screen.backingScaleFactor)
@@ -1015,7 +1090,9 @@ struct PanoramasWidget: View {
     }
 
     private var timer: Publishers.Autoconnect<Timer.TimerPublisher> {
-        let interval = min(max(w.cfgInt("interval", 300), 30), 3600)
+        // 0 = no automatic change; the timer then only ticks hourly and does nothing.
+        let raw = w.cfgInt("interval", 300)
+        let interval = raw <= 0 ? 3600 : min(max(raw, 30), 3600)
         return Timer.publish(every: TimeInterval(interval), on: .main, in: .common).autoconnect()
     }
 
@@ -1082,7 +1159,10 @@ struct PanoramasWidget: View {
             .animation(.easeInOut(duration: 0.8), value: currentIndex)
         }
         .task { library.refresh() }
-        .onReceive(timer) { _ in advanceAndSetWallpaper() }
+        .onReceive(timer) { _ in
+            guard w.cfgInt("interval", 300) > 0 else { return }
+            advanceAndSetWallpaper()
+        }
     }
 
     @ViewBuilder
@@ -1141,11 +1221,12 @@ struct PanoramasWidget: View {
     }
 
     private func nativePixelSize(for screen: NSScreen) -> (width: Int, height: Int) {
-        if let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
-            let displayID = CGDirectDisplayID(number.uint32Value)
-            let width = CGDisplayPixelsWide(displayID)
-            let height = CGDisplayPixelsHigh(displayID)
-            if width > 0, height > 0 { return (width, height) }
+        // CGDisplayPixelsWide reports points on Retina screens; the display mode knows the real pixels.
+        if let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+           let mode = CGDisplayCopyDisplayMode(CGDirectDisplayID(number.uint32Value)),
+           mode.pixelWidth > 0, mode.pixelHeight > 0 {
+            let backing = (Int(screen.frame.width * screen.backingScaleFactor), Int(screen.frame.height * screen.backingScaleFactor))
+            return (max(mode.pixelWidth, backing.0), max(mode.pixelHeight, backing.1))
         }
         return (max(1, Int(screen.frame.width * screen.backingScaleFactor)),
                 max(1, Int(screen.frame.height * screen.backingScaleFactor)))

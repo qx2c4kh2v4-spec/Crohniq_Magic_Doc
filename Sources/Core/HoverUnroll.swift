@@ -1,13 +1,67 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Unrolling hover panel ("scroll" animation)
+// MARK: - Hover list panel
 
 final class UnrollModel: ObservableObject {
     @Published var open = false
+    /// Height the whole list may take between the dock edge and the screen edge.
+    @Published var available: CGFloat = .infinity
+    /// Height of everything in the list except its scrolling part (header, buttons, padding).
+    @Published var chrome: CGFloat = 0
+    var scrollHeight: CGFloat = 0 { didSet { updateChrome() } }
+    var height: CGFloat = 0 { didSet { updateChrome() } }
+
+    /// Everything but the scroll area keeps its height; the scroll area gets what is left.
+    private func updateChrome() {
+        guard height > 0 else { return }
+        let value = height - scrollHeight
+        if abs(value - chrome) > 0.5 { chrome = value }
+    }
+
+    /// The tallest the list's scrolling part may become so the list still fits beside the dock.
+    var scrollCap: CGFloat { max(80, available - chrome) }
 }
 
-/// Floating panel that unrolls a list next to a hovered tile, like a scroll between two rods.
+private struct HoverScrollCapKey: EnvironmentKey {
+    static let defaultValue: CGFloat = .infinity
+}
+
+private struct HoverScrollHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value += nextValue() }
+}
+
+extension EnvironmentValues {
+    var hoverScrollCap: CGFloat {
+        get { self[HoverScrollCapKey.self] }
+        set { self[HoverScrollCapKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// The scrolling part of a hover list: at most `maxHeight` tall, and shorter when the
+    /// space between dock and screen edge is smaller, so the list never covers the dock.
+    func hoverListScroll(maxHeight: CGFloat) -> some View {
+        modifier(HoverListScroll(maxHeight: maxHeight))
+    }
+}
+
+private struct HoverListScroll: ViewModifier {
+    let maxHeight: CGFloat
+    @Environment(\.hoverScrollCap) private var cap
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxHeight: min(maxHeight, cap))
+            .fixedSize(horizontal: false, vertical: true)
+            .background(GeometryReader { g in
+                Color.clear.preference(key: HoverScrollHeightKey.self, value: g.size.height)
+            })
+    }
+}
+
+/// Floating panel that shows a list next to a hovered tile, in the dock's own look.
 final class HoverPanel {
     static let shared = HoverPanel()
 
@@ -19,6 +73,8 @@ final class HoverPanel {
     private var pending: DispatchWorkItem?
     private var pendingOwnerID: String?
     private var watch: Timer?
+    private var vertical = false
+    private var fromBottom = false
     private var rightClickMonitor: Any?
 
     var isVisible: Bool { panel.isVisible }
@@ -82,31 +138,77 @@ final class HoverPanel {
         if ownerID != owner || !isVisible { model.open = false }
         ownerID = owner
 
-        let root = AnyView(UnrollView(model: model, fromBottom: fromBottom, width: width, content: content)
+        self.vertical = vertical
+        self.fromBottom = fromBottom
+        model.available = availableHeight(vis: vis)
+        // A fresh identity per owner, so each list loads its own entries instead of keeping the last one's state.
+        let root = AnyView(UnrollView(model: model, fromBottom: fromBottom, width: width, content: AnyView(content.id(owner)))
             .environment(\.colorScheme, Theme.palette.dark ? .dark : .light))
         if let host { host.rootView = root } else {
             let h = FirstMouseHostingView(rootView: root)
             host = h
             panel.contentView = h
         }
-        let size = host!.fittingSize
-        var origin: NSPoint
-        if vertical {
-            let right = anchor.midX < vis.midX
-            origin = NSPoint(x: right ? anchor.maxX + 8 : anchor.minX - 8 - size.width, y: anchor.maxY - size.height + 6)
-        } else if fromBottom {
-            origin = NSPoint(x: anchor.midX - size.width / 2, y: anchor.maxY + 4)
-        } else {
-            origin = NSPoint(x: anchor.midX - size.width / 2, y: anchor.minY - 4 - size.height)
-        }
-        origin.x = max(vis.minX + 4, min(origin.x, vis.maxX - size.width - 4))
-        origin.y = max(vis.minY + 4, min(origin.y, vis.maxY - size.height - 4))
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        place(size: host!.fittingSize)
         panel.orderFrontRegardless()
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { self.model.open = true }
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { self.model.open = true }
         }
         startWatching()
+    }
+
+    /// The dock's outer edge above (or below) the hovered tile: the header tab's edge where the tile
+    /// lies under the tab, otherwise the lower edge of the band beside it.
+    private func dockEdge(_ dock: NSRect, top: Bool) -> CGFloat {
+        let store = DockStore.shared
+        let edge = top ? dock.maxY : dock.minY
+        guard store.showsHeader, !store.vertical else { return edge }
+        let tabHalf = store.headerTabWidth / 2
+        let underTab = abs(anchor.midX - dock.midX) <= tabHalf
+        let inset = store.profileStripHeight + store.headerGap
+        return underTab ? edge : (top ? edge - inset : edge + inset)
+    }
+
+    /// Room for the list between the dock's outer edge and the far screen edge.
+    private func availableHeight(vis: NSRect) -> CGFloat {
+        let dock = AppDelegate.shared.dock.windowFrame ?? anchor
+        if vertical { return vis.height }
+        return fromBottom ? vis.maxY - dockEdge(dock, top: true) : dockEdge(dock, top: false) - vis.minY
+    }
+
+    /// The list grew or shrank (entries finished loading): fit the panel to it.
+    func contentSizeChanged() {
+        guard isVisible, let host else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isVisible else { return }
+            let size = host.fittingSize
+            if abs(size.width - self.panel.frame.width) > 0.5 || abs(size.height - self.panel.frame.height) > 0.5 {
+                self.place(size: size)
+            }
+        }
+    }
+
+    private func place(size: NSSize) {
+        let screen = NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main ?? NSScreen.screens[0]
+        let vis = screen.visibleFrame
+        var origin: NSPoint
+        // The list sits on the dock's outer edge (its own edge on that side has no margin),
+        // so its line meets the dock's line and the dock stays uncovered.
+        let dock = AppDelegate.shared.dock.windowFrame ?? anchor
+        if vertical {
+            let right = anchor.midX < vis.midX
+            origin = NSPoint(x: right ? dock.maxX : dock.minX - size.width, y: anchor.maxY - size.height + 10)
+        } else if fromBottom {
+            origin = NSPoint(x: anchor.midX - size.width / 2, y: dockEdge(dock, top: true))
+        } else {
+            origin = NSPoint(x: anchor.midX - size.width / 2, y: dockEdge(dock, top: false) - size.height)
+        }
+        origin.x = max(vis.minX, min(origin.x, vis.maxX - size.width))
+        if vertical {
+            origin.y = max(vis.minY, min(origin.y, vis.maxY - size.height))
+        }
+        // Horizontal bar: the list always grows out of the dock's edge and is never pushed back over the dock.
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
     }
 
     private func startWatching() {
@@ -140,7 +242,7 @@ final class HoverPanel {
         }
         pending?.cancel()
         pendingOwnerID = nil
-        withAnimation(.easeIn(duration: 0.22)) { model.open = false }
+        withAnimation(.easeIn(duration: 0.15)) { model.open = false }
         let owner = ownerID
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self, self.ownerID == owner, !self.model.open else { return }
@@ -164,94 +266,64 @@ final class HoverPanel {
     }
 }
 
+/// The hover list, drawn like the dock itself: same glass, tint, corner radius and white edge.
+/// It slides out of the dock and fades in.
 struct UnrollView: View {
     @ObservedObject var model: UnrollModel
     let fromBottom: Bool
     let width: CGFloat
     let content: AnyView
 
-    private let rod: CGFloat = 12
+    private var edgesAwayFromDock: Edge.Set {
+        if DockStore.shared.vertical { return [.top, .bottom, .leading, .trailing] }
+        return fromBottom ? [.top, .leading, .trailing] : [.bottom, .leading, .trailing]
+    }
 
     var body: some View {
-        let p: CGFloat = model.open ? 1 : 0
-        VStack(spacing: 0) {
-            content
-                .frame(width: width)
-                .padding(.vertical, 10)
-                .modifier(SheetSurface())
-                .foregroundStyle(Theme.fg)
-                .opacity(model.open ? 1 : 0.2)
-                .mask {
-                    GeometryReader { g in
-                        Rectangle()
-                            .frame(height: max(0, g.size.height * p))
-                            .frame(maxHeight: .infinity, alignment: fromBottom ? .bottom : .top)
-                    }
-                }
-                .overlay(alignment: fromBottom ? .bottom : .top) { Rod(width: width + 16) .offset(y: fromBottom ? rod / 2 : -rod / 2) }
-                .overlay {
-                    GeometryReader { g in
-                        Rod(width: width + 16)
-                            .position(x: g.size.width / 2,
-                                      y: fromBottom ? g.size.height * (1 - p) - rod / 2 + 0 : g.size.height * p + rod / 2)
-                    }
-                }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, rod + 4)
+        let store = DockStore.shared
+        let shape = RoundedRectangle(cornerRadius: store.corner + store.barPadding, style: .continuous)
+        content
+            .frame(width: width)
+            .padding(.vertical, 12)
+            .modifier(DockSheetSurface(shape: shape))
+            .foregroundStyle(Theme.fg)
+            .opacity(model.open ? 1 : 0)
+            .scaleEffect(model.open ? 1 : 0.96, anchor: fromBottom ? .bottom : .top)
+            .offset(y: model.open ? 0 : (fromBottom ? 10 : -10))
+            // Margin for the slide-in, except on the side that touches the dock.
+            .padding(edgesAwayFromDock, 10)
+            .fixedSize()
+            .environment(\.hoverScrollCap, model.scrollCap)
+            .onPreferenceChange(HoverScrollHeightKey.self) { h in
+                model.scrollHeight = h
+            }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                model.height = size.height
+                HoverPanel.shared.contentSizeChanged()
+            }
     }
 }
 
-/// The unrolled sheet: frosted glass (content stays on top) or a solid tile colour.
-private struct SheetSurface: ViewModifier {
+/// Exactly the dock bar's surface: same glass, tint and edge.
+private struct DockSheetSurface: ViewModifier {
+    let shape: RoundedRectangle
+
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let settings = DockStore.shared.settings
         if Theme.glass {
             content
-                .glassEffect(.regular.tint(Theme.tile.opacity(0.25 + (DockStore.shared.settings.glassTint ?? 0.18) * 0.6)), in: shape)
+                .glassEffect(.clear.tint(Theme.bar.opacity(settings.glassTint ?? 0.18)), in: shape)
                 .overlay(shape.strokeBorder(
-                    LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0.1), .white.opacity(0.25)],
+                    LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0.08), .white.opacity(0.2)],
                                    startPoint: .top, endPoint: .bottom), lineWidth: 1)
                     .allowsHitTesting(false))
         } else {
-            content.background(
-                shape.fill(Theme.tile.opacity(0.97))
-                    .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
-            )
+            content.background {
+                shape.fill(Theme.bar.opacity(settings.barOpacity))
+                    .overlay(shape.strokeBorder(Theme.fg.opacity(0.08), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+            }
         }
-    }
-}
-
-/// One rod of the scroll: a rounded bar with knobs at both ends.
-struct Rod: View {
-    let width: CGFloat
-
-    var body: some View {
-        if Theme.glass { glassRod } else { solidRod }
-    }
-
-    private var glassRod: some View {
-        let tint = Theme.tileHi.opacity(0.35)
-        return HStack(spacing: 0) {
-            Color.clear.frame(width: 10, height: 18).glassEffect(.regular.tint(tint), in: Capsule())
-            Color.clear.frame(height: 12).glassEffect(.regular.tint(tint), in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(0.45), lineWidth: 0.75))
-            Color.clear.frame(width: 10, height: 18).glassEffect(.regular.tint(tint), in: Capsule())
-        }
-        .frame(width: width, height: 18)
-        .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
-    }
-
-    private var solidRod: some View {
-        let shade = LinearGradient(colors: [Theme.tileHi.mix(with: .white, by: 0.25), Theme.tileHi, Theme.tile.mix(with: .black, by: 0.4)],
-                                   startPoint: .top, endPoint: .bottom)
-        return HStack(spacing: 0) {
-            Capsule().fill(shade).frame(width: 9, height: 16)
-            Capsule().fill(shade).frame(height: 11)
-            Capsule().fill(shade).frame(width: 9, height: 16)
-        }
-        .frame(width: width, height: 16)
-        .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
     }
 }
 

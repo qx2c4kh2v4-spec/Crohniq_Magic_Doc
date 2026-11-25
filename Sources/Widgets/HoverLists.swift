@@ -58,7 +58,7 @@ struct FolderHoverList: View {
                     }
                     .padding(.horizontal, 12)
                 }
-                .frame(maxHeight: 280)
+                .hoverListScroll(maxHeight: 280)
             }
         }
         .padding(.vertical, 8)
@@ -208,13 +208,18 @@ struct FinderHoverList: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 4) {
                     Text("ZULETZT GEÖFFNET").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
-                    ForEach(recent.prefix(recentLimit), id: \.self) { url in
-                        Button { NSWorkspace.shared.open(url); HoverPanel.shared.close() } label: {
-                            Label(url.lastPathComponent, systemImage: "doc")
-                                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(recent.prefix(recentLimit), id: \.self) { url in
+                                Button { NSWorkspace.shared.open(url); HoverPanel.shared.close() } label: {
+                                    Label(url.lastPathComponent, systemImage: "doc")
+                                        .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
+                    .hoverListScroll(maxHeight: 400)
                 }
                 .padding(.horizontal, 12)
             }
@@ -345,7 +350,7 @@ struct MailHoverList: View {
                         }
                     }
                 }
-                .frame(maxHeight: 360)
+                .hoverListScroll(maxHeight: 360)
             }
         }
         .onAppear(perform: load)
@@ -487,8 +492,7 @@ struct CalendarHoverList: View {
                     }
                     .padding(.horizontal, 12)
                 }
-                .frame(maxHeight: 380)
-                .fixedSize(horizontal: false, vertical: true)
+                .hoverListScroll(maxHeight: 380)
             }
         }
         .onAppear { ek.loadUpcoming() }
@@ -597,8 +601,7 @@ struct RemindersHoverList: View {
                     }
                     .padding(.horizontal, 12)
                 }
-                .frame(maxHeight: 380)
-                .fixedSize(horizontal: false, vertical: true)
+                .hoverListScroll(maxHeight: 380)
             }
             Button {
                 NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Reminders.app"))
@@ -751,8 +754,7 @@ struct NotesHoverList: View {
                     }
                     .padding(.horizontal, 12)
                 }
-                .frame(maxHeight: 380)
-                .fixedSize(horizontal: false, vertical: true)
+                .hoverListScroll(maxHeight: 380)
             }
         }
         .onAppear { lib.refresh() }
@@ -839,6 +841,9 @@ struct LauncherHoverList: View {
     @State private var browserHistoryError: String?
     @State private var loaded = false
     @State private var question = ""
+    @State private var dockMenu: [DockMenuEntry] = []
+    @State private var dockMenuLoaded = false
+    @State private var runningApp: NSRunningApplication?
 
     private var appPath: String { app }
     private var itemCount: Int { w.fileCount(for: app) }
@@ -882,6 +887,7 @@ struct LauncherHoverList: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
+                    if runningApp != nil { dockMenuSection }
                     if !pinned.isEmpty {
                         Text("ANGEHEFTET").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
                         ForEach(pinned, id: \.self) { row($0, pinnedRow: true) }
@@ -926,19 +932,113 @@ struct LauncherHoverList: View {
                 }
                 .padding(.horizontal, 12)
             }
-            .frame(maxHeight: 400)
-            .fixedSize(horizontal: false, vertical: true)
+            .hoverListScroll(maxHeight: 400)
+            if let runningApp { appActions(runningApp) }
         }
         .onAppear(perform: load)
     }
 
+    // MARK: Dock menu (windows, recent items, app actions)
+
+    @ViewBuilder private var dockMenuSection: some View {
+        if !dockMenuLoaded {
+            ProgressView().controlSize(.small)
+        } else if !AXIsProcessTrusted() {
+            Button("Bedienungshilfen erlauben, um Fenster und App-Einträge zu zeigen") {
+                WorkspaceManager.requestAccessibility()
+            }
+            .buttonStyle(.link).font(.callout)
+            Divider()
+        } else if !dockMenu.isEmpty {
+            ForEach(Array(dockMenu.enumerated()), id: \.offset) { _, entry in dockMenuRow(entry) }
+            Divider()
+        }
+    }
+
+    @ViewBuilder private func dockMenuRow(_ entry: DockMenuEntry) -> some View {
+        if entry.isSeparator {
+            Divider()
+        } else if entry.isHeading {
+            Text(entry.title.uppercased()).font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
+                .padding(.top, 2)
+        } else if !entry.children.isEmpty {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(entry.children.enumerated()), id: \.offset) { _, child in
+                        AnyView(dockMenuRow(child))
+                    }
+                }
+                .padding(.leading, 4)
+            } label: {
+                Text(entry.title).font(.callout.weight(.medium))
+            }
+        } else {
+            Button {
+                guard let runningApp else { return }
+                DockMenuReader.press(entry.path, in: runningApp)
+                HoverPanel.shared.close()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: entry.checked ? "checkmark" : "circle.fill")
+                        .font(.system(size: entry.checked ? 11 : 4, weight: .semibold))
+                        .foregroundStyle(entry.checked ? Color.accentColor : Theme.secondary)
+                        .frame(width: 14)
+                    Text(entry.title).font(.callout.weight(.medium)).lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!entry.enabled)
+        }
+    }
+
+    private func appActions(_ app: NSRunningApplication) -> some View {
+        HStack(spacing: 6) {
+            Button("Alle Fenster") { DockMenuReader.showAllWindows(of: app); HoverPanel.shared.close() }
+                .help("Alle Fenster dieser App anzeigen")
+            Button(app.isHidden ? "Einblenden" : "Ausblenden") {
+                if app.isHidden { app.unhide() } else { app.hide() }
+                HoverPanel.shared.close()
+            }
+            Spacer()
+            Button("Beenden") { RunningApps.shared.quit([app], force: false); HoverPanel.shared.close() }
+                .help("⌥-Klick: sofort beenden")
+                .simultaneousGesture(TapGesture().modifiers(.option).onEnded {
+                    RunningApps.shared.quit([app], force: true)
+                    HoverPanel.shared.close()
+                })
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+    }
+
     private func load() {
-        guard let bid = Bundle(path: appPath)?.bundleIdentifier else { loaded = true; return }
+        guard Bundle(path: appPath)?.bundleIdentifier != nil else { loaded = true; return }
+        let appPath = appPath
         let historyLimit = historyLimit
         let recentLimit = itemCount
         let browserID = browserBundleID
+        let running = NSWorkspace.shared.runningApplications.first {
+            $0.bundleURL?.standardizedFileURL.path == URL(fileURLWithPath: appPath).standardizedFileURL.path
+        }
+        runningApp = running
+        if let running, DockStore.shared.settings.readDockMenus ?? true {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let raw = DockMenuReader.items(for: running)
+                diagLog("CrohniqDiag menu app=%@ ax=%d items=%d", appPath, AXIsProcessTrusted() ? 1 : 0, raw?.count ?? -1)
+                let items = raw ?? []
+                DispatchQueue.main.async {
+                    dockMenu = items
+                    dockMenuLoaded = true
+                }
+            }
+        } else {
+            dockMenuLoaded = true
+        }
         DispatchQueue.global(qos: .userInitiated).async {
-            let r = AppLauncher.recentDocuments(bundleID: bid, limit: recentLimit)
+            let r = AppLauncher.recentFiles(appPath: appPath, limit: recentLimit)
+            diagLog("CrohniqDiag recent app=%@ count=%d running=%d", appPath, r.count, running == nil ? 0 : 1)
             let history: (visits: [BrowserVisit], error: String?)?
             if let browserID {
                 history = BrowserHistory.load(bundleID: browserID, limit: historyLimit)
@@ -1051,8 +1151,7 @@ struct WorkspaceHoverList: View {
                     }
                     .padding(.horizontal, 12)
                 }
-                .frame(maxHeight: 400)
-                .fixedSize(horizontal: false, vertical: true)
+                .hoverListScroll(maxHeight: 400)
                 HStack {
                     Button("Aktuellen Desktop hier speichern") { mgr.saveDesktop(into: ws.id) }
                     Spacer()
@@ -1204,8 +1303,7 @@ struct MusicHoverList: View {
                     }
                     .padding(.horizontal, 12)
                 }
-                .frame(maxHeight: 400)
-                .fixedSize(horizontal: false, vertical: true)
+                .hoverListScroll(maxHeight: 400)
                 .onChange(of: queue.tracks) { _, _ in proxy.scrollTo(queue.currentIndex, anchor: .center) }
             }
         }
