@@ -101,8 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         if let i = CommandLine.arguments.firstIndex(of: "--make-codes") {
-            let n = CommandLine.arguments.count > i + 1 ? Int(CommandLine.arguments[i + 1]) ?? 10 : 10
-            Activation.batch(count: n).forEach { print($0) }
+            let args = Array(CommandLine.arguments[(i + 1)...])
+            let tier: LicenseTier = args.contains("premium") ? .premium : .base
+            let n = args.compactMap { Int($0) }.first ?? 10
+            print("# \(tier == .premium ? "Premium" : "Basis")-Codes:")
+            Activation.batch(tier: tier, count: n).forEach { print($0) }
             exit(0)
         }
         _ = LocationService.shared
@@ -231,6 +234,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sim.target = self
         sim.state = Entitlements.shared.simulatingLock ? .on : .off
         menu.addItem(sim)
+        let expire = NSMenuItem(title: "Entwickler: Testphase ablaufen lassen", action: #selector(expireTrialAction), keyEquivalent: "")
+        expire.target = self
+        menu.addItem(expire)
+        let resetLic = NSMenuItem(title: "Entwickler: Lizenz & Testphase zurücksetzen", action: #selector(resetLicenseAction), keyEquivalent: "")
+        resetLic.target = self
+        menu.addItem(resetLic)
         #endif
 
         menu.addItem(.separator())
@@ -284,6 +293,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func openUnlockAction() { AddonUnlock.show() }
     #if DEBUG
     @objc func toggleSimulateLockAction() { MainActor.assumeIsolated { Entitlements.shared.toggleSimulateLock() } }
+    @objc func expireTrialAction() { MainActor.assumeIsolated { Entitlements.shared.debugExpireTrial() } }
+    @objc func resetLicenseAction() { MainActor.assumeIsolated { Entitlements.shared.reset() } }
     #endif
 
     func openSettings(page: SettingsPage? = nil, selecting id: UUID? = nil) {

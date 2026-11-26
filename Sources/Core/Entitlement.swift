@@ -43,26 +43,48 @@ extension WidgetKind {
     }
 }
 
-// MARK: - Entitlements (free vs unlocked)
+// MARK: - Entitlements (trial / base / premium)
+
+/// What the user is entitled to. Higher raw value includes the lower one.
+enum LicenseTier: Int, Comparable {
+    case none = 0, base = 1, premium = 2
+    static func < (a: LicenseTier, b: LicenseTier) -> Bool { a.rawValue < b.rawValue }
+}
 
 @MainActor
 final class Entitlements: ObservableObject {
     static let shared = Entitlements()
 
-    private let unlockedKey = "addon.unlocked"
-    private let codeKey = "addon.code"
+    /// Free, full-feature trial length.
+    static let trialDays = 14
+
+    private let tierKey = "license.tier"
+    private let codeKey = "license.code"
+    private let trialStartKey = "trial.start"
     private let seenKey = "addon.seenFeatures"
 
-    @Published private(set) var unlocked: Bool
+    @Published private(set) var tier: LicenseTier
 
     private init() {
-        unlocked = Self.computeUnlocked()
+        tier = LicenseTier(rawValue: UserDefaults.standard.integer(forKey: tierKey)) ?? .none
+        if UserDefaults.standard.object(forKey: trialStartKey) == nil {
+            UserDefaults.standard.set(Date(), forKey: trialStartKey)
+        }
     }
 
-    /// Developer builds are unlocked by default – the developer is never locked out. Locks can be
-    /// switched on for testing. Release builds depend only on a real activation code.
-    private static func computeUnlocked() -> Bool {
-        if UserDefaults.standard.bool(forKey: "addon.unlocked") { return true }
+    // MARK: Trial
+
+    var trialStart: Date { UserDefaults.standard.object(forKey: trialStartKey) as? Date ?? Date() }
+    var trialDaysLeft: Int {
+        let used = Calendar.current.dateComponents([.day], from: trialStart, to: Date()).day ?? 0
+        return max(0, Self.trialDays - used)
+    }
+    var inTrial: Bool { trialDaysLeft > 0 }
+
+    // MARK: Entitlement state
+
+    /// Developer builds behave as premium unless the lock is simulated for testing.
+    private var devOverride: Bool {
         #if DEBUG
         return !UserDefaults.standard.bool(forKey: "addon.simulateLock")
         #else
@@ -70,37 +92,56 @@ final class Entitlements: ObservableObject {
         #endif
     }
 
+    var premiumUnlocked: Bool { devOverride || tier == .premium }
+    var baseUnlocked: Bool { premiumUnlocked || tier == .base }
+    /// Kept for existing call sites: true when premium is fully unlocked.
+    var unlocked: Bool { premiumUnlocked }
+    /// Trial over and no license: the app shows only the start view with a buy link.
+    var expired: Bool { !devOverride && !inTrial && tier == .none }
+
+    /// Whether a widget is locked right now. Everything is free during the trial.
+    func isLocked(_ kind: WidgetKind) -> Bool {
+        if devOverride || inTrial { return false }
+        switch tier {
+        case .premium: return false
+        case .base: return kind.isPremium
+        case .none: return true
+        }
+    }
+
+    // MARK: Activation
+
+    /// Applies a license code; upgrades the tier (never downgrades). Returns the unlocked tier, or nil.
+    @discardableResult
+    func activate(_ code: String) -> LicenseTier? {
+        guard let bought = Activation.tier(of: code), bought != .none else { return nil }
+        let newTier = max(tier, bought)
+        UserDefaults.standard.set(newTier.rawValue, forKey: tierKey)
+        UserDefaults.standard.set(code.trimmingCharacters(in: .whitespaces).uppercased(), forKey: codeKey)
+        tier = newTier
+        if premiumUnlocked { markAllPremiumSeen(); PromoBubble.shared.stop() }
+        return newTier
+    }
+
     #if DEBUG
     var simulatingLock: Bool { UserDefaults.standard.bool(forKey: "addon.simulateLock") }
-    /// Lets the developer preview the locked (customer) experience without entering a code.
     func toggleSimulateLock() {
         UserDefaults.standard.set(!simulatingLock, forKey: "addon.simulateLock")
-        unlocked = Self.computeUnlocked()
-        if unlocked { PromoBubble.shared.stop() } else { PromoBubble.shared.start() }
+        objectWillChange.send()
+        if premiumUnlocked { PromoBubble.shared.stop() } else { PromoBubble.shared.start() }
+    }
+    /// Testing: move the trial start into the past so the expired state can be checked.
+    func debugExpireTrial() {
+        UserDefaults.standard.set(Calendar.current.date(byAdding: .day, value: -(Self.trialDays + 1), to: Date()), forKey: trialStartKey)
+        objectWillChange.send()
+    }
+    func reset() {
+        [tierKey, codeKey, trialStartKey, "addon.simulateLock"].forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        UserDefaults.standard.set(Date(), forKey: trialStartKey)
+        tier = .none
+        objectWillChange.send()
     }
     #endif
-
-    /// The add-on widgets are visible but locked until this is true.
-    func isLocked(_ kind: WidgetKind) -> Bool { kind.isPremium && !unlocked }
-
-    /// Tries an activation code; returns true and unlocks on success.
-    @discardableResult
-    func activate(_ code: String) -> Bool {
-        guard Activation.isValid(code) else { return false }
-        UserDefaults.standard.set(true, forKey: unlockedKey)
-        UserDefaults.standard.set(code.trimmingCharacters(in: .whitespaces).uppercased(), forKey: codeKey)
-        markAllPremiumSeen()
-        unlocked = true
-        PromoBubble.shared.stop()
-        return true
-    }
-
-    /// Only for development/testing: clears the unlock.
-    func reset() {
-        UserDefaults.standard.removeObject(forKey: unlockedKey)
-        UserDefaults.standard.removeObject(forKey: codeKey)
-        unlocked = Self.computeUnlocked()
-    }
 
     // Premium features the user has already been told about (for "Neu" bubbles after updates).
     var seenPremium: Set<String> {
@@ -113,30 +154,32 @@ final class Entitlements: ObservableObject {
     }
 }
 
-// MARK: - Activation codes (offline)
+// MARK: - Activation codes (offline, tier-aware)
 
-/// Short, offline-verifiable activation codes. A code is 2 bytes serial + 4 bytes HMAC tag,
-/// Crockford-base32 encoded and grouped as XXXXX-XXXXX. Generate with `--make-codes <n>`.
+/// Short, offline-verifiable license codes. A code is 1 byte tier + 2 bytes serial + 4 bytes HMAC tag,
+/// Crockford-base32 encoded and grouped. Generate with `--make-codes base|premium <n>`.
 enum Activation {
     /// Shared secret – also used by the code generator built into this app.
     private static let secret = SymmetricKey(data: Data("CrohniqDock.Addon.v1.$7hK29pLmQ".utf8))
     private static let alphabet = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ") // Crockford base32
 
-    static func make(serial: UInt16) -> String {
-        var payload = Data([UInt8(serial >> 8), UInt8(serial & 0xFF)])
+    /// A master premium code for support/development (not sold).
+    static let master = "CROHNIQ_DOCK_PREM"
+
+    static func make(tier: LicenseTier, serial: UInt16) -> String {
+        var payload = Data([UInt8(tier.rawValue), UInt8(serial >> 8), UInt8(serial & 0xFF)])
         payload.append(tag(for: payload))
         return group(encode(payload))
     }
 
-    /// The fixed code that unlocks the premium features.
-    static let universal = "CROHNIQ_DOCK_PREM"
-
-    static func isValid(_ raw: String) -> Bool {
+    /// The tier a code grants, or nil if it is not a valid code.
+    static func tier(of raw: String) -> LicenseTier? {
         let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if normalized == universal { return true }
-        guard let data = decode(normalized), data.count == 6 else { return false }
-        let serial = data.prefix(2)
-        return tag(for: serial) == data.suffix(4)
+        if normalized == master { return .premium }
+        guard let data = decode(normalized), data.count == 7 else { return nil }
+        let head = data.prefix(3)
+        guard tag(for: head) == data.suffix(4) else { return nil }
+        return LicenseTier(rawValue: Int(data[data.startIndex]))
     }
 
     private static func tag(for serial: Data) -> Data {
@@ -173,8 +216,8 @@ enum Activation {
             .joined(separator: "-")
     }
 
-    /// Prints `count` fresh codes (used by the `--make-codes` developer command).
-    static func batch(count: Int, startingAt first: UInt16 = UInt16.random(in: 1000...9000)) -> [String] {
-        (0..<count).map { make(serial: first &+ UInt16($0)) }
+    /// Prints `count` fresh codes of a tier (used by the `--make-codes` developer command).
+    static func batch(tier: LicenseTier, count: Int, startingAt first: UInt16 = UInt16.random(in: 1000...9000)) -> [String] {
+        (0..<count).map { make(tier: tier, serial: first &+ UInt16($0)) }
     }
 }
