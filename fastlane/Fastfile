@@ -18,7 +18,7 @@
 #   fastlane mac github_release DMG als GitHub-Release veröffentlichen
 #   fastlane mac distribute     bump + developer_id + notarize_app + dmg (Optionen: bump:false publish:true)
 # Download-Link, der immer auf die neueste Version zeigt:
-#   https://github.com/qx2c4kh2v4-spec/Crohniq_Magic_Doc/releases/latest/download/Crohniq-Dock.dmg
+#   https://github.com/qx2c4kh2v4-spec/Crohniq_Dock_GifAway/releases/latest/download/Crohniq-Dock.dmg
 #
 # App Store Connect:
 #   fastlane mac upload_metadata  Texte (fastlane/metadata) und Screenshots (fastlane/screenshots) hochladen
@@ -38,7 +38,7 @@ DERIVED     = File.join(ROOT, "build", "DerivedData")
 TEAM_ID     = "FW84ZL64CN"
 DEVID_DIR   = File.join(ROOT, "build", "developer-id")
 DIST_DIR    = File.join(ROOT, "build", "dist")
-GITHUB_REPO = "qx2c4kh2v4-spec/Crohniq_Magic_Doc"
+GITHUB_REPO = "qx2c4kh2v4-spec/Crohniq_Dock_GifAway"
 DMG_LATEST  = File.join(DIST_DIR, "Crohniq-Dock.dmg")
 
 # App Store Connect API-Schlüssel: liegt ausserhalb des Repos in ../Fastlane_keys/AuthKey_<KEY_ID>.p8
