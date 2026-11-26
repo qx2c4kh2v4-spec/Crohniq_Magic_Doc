@@ -1,6 +1,7 @@
 name: CrohniqDock
 options:
   bundleIdPrefix: ch.crohniq
+  xcodeVersion: "27.0"
   deploymentTarget:
     macOS: "26.0"
 settings:
@@ -9,7 +10,10 @@ settings:
     DEVELOPMENT_LANGUAGE: de
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "31"
+    CURRENT_PROJECT_VERSION: "32"
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    STRING_CATALOG_GENERATE_SYMBOLS: YES
 targets:
   CrohniqDock:
     type: application
@@ -48,10 +52,11 @@ targets:
           - FW84ZL64CN.ch.crohniq.shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ch.crohniq.dock
+        PRODUCT_BUNDLE_IDENTIFIER: crohniq.dock.ch
         PRODUCT_NAME: Crohniq Dock
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: Apple Development
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         COMBINE_HIDPI_IMAGES: YES
+        REGISTER_APP_GROUPS: YES

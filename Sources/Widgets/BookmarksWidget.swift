@@ -21,17 +21,21 @@ final class SafariBookmarks: ObservableObject {
     @Published private(set) var accessDenied = false
     @Published private(set) var favicons: [String: NSImage] = [:]
 
+    #if FULL_EDITION
     private let path = NSHomeDirectory() + "/Library/Safari/Bookmarks.plist"
+    #endif
     private var lastModified: Date?
     private var timer: Timer?
     private var loadingIcons = Set<String>()
 
     private init() {
+        guard Edition.readsOtherAppsData else { return }
         reload()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.reload() }
     }
 
     func reload() {
+        #if FULL_EDITION
         let mod = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
         if mod != nil, mod == lastModified, !accessDenied { return }
         guard let data = FileManager.default.contents(atPath: path),
@@ -56,6 +60,7 @@ final class SafariBookmarks: ObservableObject {
         self.bar = bar
         self.folders = folders
         self.readingList = reading
+        #endif
     }
 
     private static func parseChildren(_ dict: [String: Any]) -> [BookmarkNode] {
@@ -107,7 +112,7 @@ struct BookmarksWidget: View {
     @ObservedObject private var safari = SafariBookmarks.shared
     @Environment(\.dockScale) private var s
 
-    private var useSafari: Bool { w.cfg("source", "safari") == "safari" }
+    private var useSafari: Bool { Edition.readsOtherAppsData && w.cfg("source", "safari") == "safari" }
 
     private var customItems: [BookmarkNode] {
         w.cfg("items").split(separator: "\n").compactMap { line in

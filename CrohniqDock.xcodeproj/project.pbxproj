@@ -10,6 +10,8 @@
 		031335DFD4CB8F3C03C71DA8 /* DockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFF06EFA8605BD8E9798FB8 /* DockPanel.swift */; };
 		1B042781338B4C89348FBD70 /* HoverLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8597BAEDDB76DC5095BAF7 /* HoverLists.swift */; };
 		26A0D881C08A42AE53A8E0E4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0101C445872FFEDCB416F747 /* SettingsView.swift */; };
+		26B8313226EBC013D44E512B /* Edition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD3098FD896EE61B75E06DC /* Edition.swift */; };
+		28655A06431350E9DD06F7C5 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04EAA6A8842A0D5943A23F1 /* WelcomeView.swift */; };
 		28E9E8925F21FBA0B96360EF /* DockMenuReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F7BE7E3BA5E8FCD7C2D264 /* DockMenuReader.swift */; };
 		29B85473DE7C3745928B508D /* Gallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D1F231FAED3EB7583A5582 /* Gallery.swift */; };
 		31DBD80E6C9363B3712045DB /* UtilityWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2D1DB90C7B4EA53CDA64FA /* UtilityWidgets.swift */; };
@@ -21,25 +23,31 @@
 		535229E62868CCC440F018D9 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45CE8E11D71391F582AA3351 /* App.swift */; };
 		632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */; };
 		6AB95582B843A188A6B882A9 /* QuickNotesExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C13C9168F408D64AADCDA68 /* QuickNotesExport.swift */; };
+		6DD0AFC90BAA9596D9BB58B6 /* HelpSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA108D3373AFF7EC19AE4BE3 /* HelpSetupView.swift */; };
 		73CD3AEFAD1BBE0897E0A39D /* PermissionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A5759790375A84CCFE608B8 /* PermissionsView.swift */; };
 		7C227B986DAA3D63EF621C7F /* DockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F9F378EC332D7CADF2497B /* DockView.swift */; };
 		7C6FD345A2A694CE3A67F4E9 /* WhatsAppChats.swift in Sources */ = {isa = PBXBuildFile; fileRef = A978C5202EE0642DA2FA6033 /* WhatsAppChats.swift */; };
+		7D5BA7851386C20FE512AD6B /* UnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D31AEADF7C4B9B2BD46D23 /* UnlockView.swift */; };
 		8187D90A6D495AA1CEF23EFE /* WeatherRadar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C35C8063FA42BC4822F3AAD /* WeatherRadar.swift */; };
 		908F1AB7D3BB410BD0F681BF /* HoverUnroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B08E70115B4613534F46521 /* HoverUnroll.swift */; };
 		9C29501B5809C478CF64FC3E /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BFBC845FC638B78B0DC11C0 /* Services.swift */; };
 		AA48A04C45C2F7E6D498E547 /* ProductivityWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D561D557DA3EA7AE852261 /* ProductivityWidgets.swift */; };
 		B730ACB20AB4D5EF92EAE023 /* LauncherWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62522C331928E81EB498650C /* LauncherWidget.swift */; };
 		C188C4831844B78B3F969EEA /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A6240DE39C96220752AB753 /* Model.swift */; };
+		C2D5E51448CA7E413B6DA1E4 /* DockGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 416DAB1E5593AB271B73BB2C /* DockGuideView.swift */; };
 		D3B473FD47DA8B96514C9108 /* NexusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A27DCA15116D6637EA85F06 /* NexusWidget.swift */; };
 		D66A973CC0BD72D4EEA1548A /* SearchAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32529777FEFE89CF0A2F9B46 /* SearchAI.swift */; };
 		D8B8E71D467B5BBAAC7EB295 /* AddPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41F0DC0D1265BEDFE91B3E18 /* AddPanel.swift */; };
 		DE5282FF7C060C4C592363CD /* BookmarksWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC041A333725545DE5CEBF20 /* BookmarksWidget.swift */; };
+		EDCFE213F1758D43C744E554 /* Entitlement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BEE23FEEAFBD101F3A2B3E5 /* Entitlement.swift */; };
 		F23DA0148421C951FEFA1C61 /* SignalChats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD55663150173AB09BDECAE /* SignalChats.swift */; };
 		F2EFA2BC53BBAB333BF3067F /* FinderWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE9E558BE10E7BD854A366DD /* FinderWidget.swift */; };
 		F617FC6F2CB3408ACA6BD1B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4D81D1BE6592FCA4BFCA95C5 /* Assets.xcassets */; };
+		F9FBA1B307391168980A93C7 /* PromoBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E379C9535CA5E4C5531114F /* PromoBubble.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		00D31AEADF7C4B9B2BD46D23 /* UnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockView.swift; sourceTree = "<group>"; };
 		0101C445872FFEDCB416F747 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		0CC5C930CB6EE48C51ECEC53 /* SystemWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWidgets.swift; sourceTree = "<group>"; };
 		1A5759790375A84CCFE608B8 /* PermissionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsView.swift; sourceTree = "<group>"; };
@@ -48,8 +56,11 @@
 		32529777FEFE89CF0A2F9B46 /* SearchAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchAI.swift; sourceTree = "<group>"; };
 		39E1F029BBC743CE2AFF03B1 /* BrowserHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserHistory.swift; sourceTree = "<group>"; };
 		3A27DCA15116D6637EA85F06 /* NexusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexusWidget.swift; sourceTree = "<group>"; };
+		3BEE23FEEAFBD101F3A2B3E5 /* Entitlement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entitlement.swift; sourceTree = "<group>"; };
 		3C13C9168F408D64AADCDA68 /* QuickNotesExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickNotesExport.swift; sourceTree = "<group>"; };
+		3E379C9535CA5E4C5531114F /* PromoBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromoBubble.swift; sourceTree = "<group>"; };
 		3F8597BAEDDB76DC5095BAF7 /* HoverLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverLists.swift; sourceTree = "<group>"; };
+		416DAB1E5593AB271B73BB2C /* DockGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockGuideView.swift; sourceTree = "<group>"; };
 		41F0DC0D1265BEDFE91B3E18 /* AddPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPanel.swift; sourceTree = "<group>"; };
 		45CE8E11D71391F582AA3351 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		46F7BE7E3BA5E8FCD7C2D264 /* DockMenuReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockMenuReader.swift; sourceTree = "<group>"; };
@@ -57,6 +68,7 @@
 		5C35C8063FA42BC4822F3AAD /* WeatherRadar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherRadar.swift; sourceTree = "<group>"; };
 		5DD55663150173AB09BDECAE /* SignalChats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalChats.swift; sourceTree = "<group>"; };
 		62522C331928E81EB498650C /* LauncherWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherWidget.swift; sourceTree = "<group>"; };
+		6FD3098FD896EE61B75E06DC /* Edition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Edition.swift; sourceTree = "<group>"; };
 		7B2D1DB90C7B4EA53CDA64FA /* UtilityWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityWidgets.swift; sourceTree = "<group>"; };
 		8A6240DE39C96220752AB753 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
 		8BFBC845FC638B78B0DC11C0 /* Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services.swift; sourceTree = "<group>"; };
@@ -69,6 +81,8 @@
 		DE9E558BE10E7BD854A366DD /* FinderWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderWidget.swift; sourceTree = "<group>"; };
 		E12ACE9678E89F3336BBA0E6 /* QuitAppsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuitAppsWidget.swift; sourceTree = "<group>"; };
 		E1D561D557DA3EA7AE852261 /* ProductivityWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductivityWidgets.swift; sourceTree = "<group>"; };
+		EA108D3373AFF7EC19AE4BE3 /* HelpSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpSetupView.swift; sourceTree = "<group>"; };
+		F04EAA6A8842A0D5943A23F1 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		F9D1F231FAED3EB7583A5582 /* Gallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gallery.swift; sourceTree = "<group>"; };
 		FC041A333725545DE5CEBF20 /* BookmarksWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarksWidget.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -109,13 +123,20 @@
 			children = (
 				41F0DC0D1265BEDFE91B3E18 /* AddPanel.swift */,
 				45CE8E11D71391F582AA3351 /* App.swift */,
+				416DAB1E5593AB271B73BB2C /* DockGuideView.swift */,
 				CAFF06EFA8605BD8E9798FB8 /* DockPanel.swift */,
 				A5F9F378EC332D7CADF2497B /* DockView.swift */,
+				6FD3098FD896EE61B75E06DC /* Edition.swift */,
+				3BEE23FEEAFBD101F3A2B3E5 /* Entitlement.swift */,
 				F9D1F231FAED3EB7583A5582 /* Gallery.swift */,
+				EA108D3373AFF7EC19AE4BE3 /* HelpSetupView.swift */,
 				2B08E70115B4613534F46521 /* HoverUnroll.swift */,
 				8A6240DE39C96220752AB753 /* Model.swift */,
 				1A5759790375A84CCFE608B8 /* PermissionsView.swift */,
+				3E379C9535CA5E4C5531114F /* PromoBubble.swift */,
 				0101C445872FFEDCB416F747 /* SettingsView.swift */,
+				00D31AEADF7C4B9B2BD46D23 /* UnlockView.swift */,
+				F04EAA6A8842A0D5943A23F1 /* WelcomeView.swift */,
 				BB241B57081B43DC7BC7E6D0 /* Workspaces.swift */,
 			);
 			path = Core;
@@ -187,7 +208,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					D92FAB0DBEF3B3094F761EC2 = {
 						DevelopmentTeam = FW84ZL64CN;
@@ -235,11 +256,15 @@
 				332888E1FECF85568946A7E4 /* AppWidgets.swift in Sources */,
 				DE5282FF7C060C4C592363CD /* BookmarksWidget.swift in Sources */,
 				51DC4AB16870A7857EC17049 /* BrowserHistory.swift in Sources */,
+				C2D5E51448CA7E413B6DA1E4 /* DockGuideView.swift in Sources */,
 				28E9E8925F21FBA0B96360EF /* DockMenuReader.swift in Sources */,
 				031335DFD4CB8F3C03C71DA8 /* DockPanel.swift in Sources */,
 				7C227B986DAA3D63EF621C7F /* DockView.swift in Sources */,
+				26B8313226EBC013D44E512B /* Edition.swift in Sources */,
+				EDCFE213F1758D43C744E554 /* Entitlement.swift in Sources */,
 				F2EFA2BC53BBAB333BF3067F /* FinderWidget.swift in Sources */,
 				29B85473DE7C3745928B508D /* Gallery.swift in Sources */,
+				6DD0AFC90BAA9596D9BB58B6 /* HelpSetupView.swift in Sources */,
 				1B042781338B4C89348FBD70 /* HoverLists.swift in Sources */,
 				908F1AB7D3BB410BD0F681BF /* HoverUnroll.swift in Sources */,
 				B730ACB20AB4D5EF92EAE023 /* LauncherWidget.swift in Sources */,
@@ -248,6 +273,7 @@
 				73CD3AEFAD1BBE0897E0A39D /* PermissionsView.swift in Sources */,
 				351EDA166F14CB27B40469D3 /* Photos.swift in Sources */,
 				AA48A04C45C2F7E6D498E547 /* ProductivityWidgets.swift in Sources */,
+				F9FBA1B307391168980A93C7 /* PromoBubble.swift in Sources */,
 				6AB95582B843A188A6B882A9 /* QuickNotesExport.swift in Sources */,
 				3C94AF079E5912164D207AD8 /* QuitAppsWidget.swift in Sources */,
 				D66A973CC0BD72D4EEA1548A /* SearchAI.swift in Sources */,
@@ -255,8 +281,10 @@
 				26A0D881C08A42AE53A8E0E4 /* SettingsView.swift in Sources */,
 				F23DA0148421C951FEFA1C61 /* SignalChats.swift in Sources */,
 				4AA4A668EA32F5B12342E356 /* SystemWidgets.swift in Sources */,
+				7D5BA7851386C20FE512AD6B /* UnlockView.swift in Sources */,
 				31DBD80E6C9363B3712045DB /* UtilityWidgets.swift in Sources */,
 				8187D90A6D495AA1CEF23EFE /* WeatherRadar.swift in Sources */,
+				28655A06431350E9DD06F7C5 /* WelcomeView.swift in Sources */,
 				7C6FD345A2A694CE3A67F4E9 /* WhatsAppChats.swift in Sources */,
 				632BBD991D2A17E935AB94F1 /* Workspaces.swift in Sources */,
 			);
@@ -299,12 +327,14 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_LANGUAGE = de;
 				DEVELOPMENT_TEAM = FW84ZL64CN;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -319,6 +349,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -359,12 +390,14 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_LANGUAGE = de;
 				DEVELOPMENT_TEAM = FW84ZL64CN;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -386,6 +419,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -406,8 +440,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ch.crohniq.dock;
+				PRODUCT_BUNDLE_IDENTIFIER = crohniq.dock.ch;
 				PRODUCT_NAME = "Crohniq Dock";
+				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -426,8 +461,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ch.crohniq.dock;
+				PRODUCT_BUNDLE_IDENTIFIER = crohniq.dock.ch;
 				PRODUCT_NAME = "Crohniq Dock";
+				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 			};
 			name = Release;

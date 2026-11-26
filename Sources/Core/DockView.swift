@@ -30,6 +30,9 @@ struct DockView: View {
                 profileHeader(s: store.dockScale)
             }
             layout {
+                FreeBadge()
+                    .frame(width: store.vertical ? store.dockRowSize.width : store.badgeSize,
+                           height: store.vertical ? store.badgeSize : store.dockRowSize.height)
                 DockGrip(vertical: store.vertical)
                     .frame(width: store.vertical ? store.dockRowSize.width : store.grip,
                            height: store.vertical ? store.grip : store.dockRowSize.height)
@@ -494,7 +497,7 @@ enum WidgetDragOut {
             if let frame = AppDelegate.shared.dock.windowFrame,
                distance(from: pointer, to: frame) >= max(12, DockStore.shared.unit * 0.25) {
                 withAnimation(.easeOut(duration: 0.2)) { DockStore.shared.remove(id) }
-                NSAnimationEffect.poof.show(centeredAt: pointer, size: NSSize(width: 48, height: 48))
+                PoofEffect.show(at: pointer)
             }
             onEnd()
         }
@@ -507,6 +510,45 @@ enum WidgetDragOut {
         let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
         let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
         return (dx * dx + dy * dy).squareRoot()
+    }
+}
+
+/// A small puff of smoke where a removed widget was released (replaces the deprecated NSAnimationEffect.poof).
+enum PoofEffect {
+    static func show(at point: NSPoint) {
+        let size: CGFloat = 72
+        let panel = NSPanel(contentRect: NSRect(x: point.x - size / 2, y: point.y - size / 2, width: size, height: size),
+                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.level = .popUpMenu
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        panel.contentView = NSHostingView(rootView: PoofView())
+        panel.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { panel.orderOut(nil) }
+    }
+}
+
+private struct PoofView: View {
+    @State private var burst = false
+    private let puffs: [(angle: Double, size: CGFloat)] = (0..<7).map { (Double($0) / 7 * 2 * .pi, [14, 18, 12, 16, 20, 13, 17][$0]) }
+
+    var body: some View {
+        ZStack {
+            ForEach(puffs.indices, id: \.self) { i in
+                Circle()
+                    .fill(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.25), radius: 2)
+                    .frame(width: puffs[i].size, height: puffs[i].size)
+                    .offset(x: burst ? cos(puffs[i].angle) * 22 : 0, y: burst ? sin(puffs[i].angle) * 22 : 0)
+                    .scaleEffect(burst ? 1.3 : 0.4)
+            }
+        }
+        .opacity(burst ? 0 : 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { withAnimation(.easeOut(duration: 0.4)) { burst = true } }
     }
 }
 
@@ -664,11 +706,20 @@ private struct TileGlass: ViewModifier {
 struct TileContainer: View {
     let instance: WidgetInstance
     @ObservedObject private var store = DockStore.shared
+    @ObservedObject private var entitlements = Entitlements.shared
     @Environment(\.dockScale) private var s
+
+    private var locked: Bool { entitlements.isLocked(instance.kind) }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: store.corner, style: .continuous)
-        let tile = WidgetHost(instance: instance)
+        let tile = Group {
+            if locked {
+                LockedTile(kind: instance.kind)
+            } else {
+                WidgetHost(instance: instance)
+            }
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         Group {
             if instance.hugsIcon {
@@ -693,11 +744,12 @@ struct TileContainer: View {
         .hoverUnroll(
                 id: instance.id,
                 width: instance.kind == .weather ? 380 : 300,
-                enabled: instance.cfg("unrollEnabled", "1") != "0" && hoverContent != nil
+                enabled: !locked && instance.cfg("unrollEnabled", "1") != "0" && hoverContent != nil
             ) {
                 hoverContent ?? AnyView(EmptyView())
             }
             .contentShape(RoundedRectangle(cornerRadius: store.corner, style: .continuous))
+            .modifier(LockedTap(active: locked, kind: instance.kind))
             .contextMenu { menu }
     }
 
@@ -941,6 +993,44 @@ struct WidgetHost: View {
     }
 }
 
+// MARK: - Locked add-on widgets
+
+/// Shown in place of a premium widget until the add-on is unlocked. A faint hint of the real
+/// symbol plus a small lock; a click opens the unlock page.
+struct LockedTile: View {
+    let kind: WidgetKind
+    @Environment(\.dockScale) private var s
+
+    var body: some View {
+        ZStack {
+            Image(systemName: kind.symbol)
+                .font(.system(size: 18 * s))
+                .foregroundStyle(Theme.fg.opacity(0.28))
+            Image(systemName: "lock.fill")
+                .font(.system(size: 11 * s, weight: .bold))
+                .foregroundStyle(Theme.fg.opacity(0.85))
+                .padding(4 * s)
+                .background(Circle().fill(Color.black.opacity(0.35)))
+                .offset(x: 10 * s, y: 10 * s)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .help("\(kind.title) – mit dem Add-on freischalten")
+    }
+}
+
+/// Makes a locked tile open the unlock page on click (instead of its normal action).
+private struct LockedTap: ViewModifier {
+    let active: Bool
+    let kind: WidgetKind
+    func body(content: Content) -> some View {
+        if active {
+            content.onTapGesture { AddonUnlock.show(highlight: kind) }
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - Shared building blocks
 
 struct CircleButton: View {
@@ -1037,6 +1127,37 @@ enum WidgetSize {
 }
 
 // MARK: - Grip: drag the bar to another screen edge
+
+/// Small badge at the left edge of the bar: "Free" while locked, a golden crown once premium is unlocked.
+struct FreeBadge: View {
+    @ObservedObject private var entitlements = Entitlements.shared
+    @Environment(\.dockScale) private var s
+
+    private let gold = LinearGradient(colors: [Color(red: 1, green: 0.86, blue: 0.35), Color(red: 0.95, green: 0.65, blue: 0.1)],
+                                      startPoint: .top, endPoint: .bottom)
+
+    var body: some View {
+        Button {
+            if !entitlements.unlocked { AddonUnlock.show() }
+        } label: {
+            if entitlements.unlocked {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 14 * s, weight: .bold))
+                    .foregroundStyle(gold)
+                    .shadow(color: .black.opacity(0.3), radius: 1, y: 0.5)
+            } else {
+                Text("FREE")
+                    .font(.system(size: 8.5 * s, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5 * s).padding(.vertical, 2.5 * s)
+                    .background(Capsule().fill(LinearGradient(colors: [Color(red: 0.25, green: 0.55, blue: 1), Color(red: 0.15, green: 0.35, blue: 0.9)],
+                                                              startPoint: .top, endPoint: .bottom)))
+            }
+        }
+        .buttonStyle(.plain)
+        .help(entitlements.unlocked ? "Premium aktiv – danke!" : "Kostenlose Version · zum Freischalten der Premium-Funktionen klicken")
+    }
+}
 
 struct DockGrip: View {
     let vertical: Bool

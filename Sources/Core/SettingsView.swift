@@ -211,8 +211,10 @@ struct GeneralSettings: View {
             Section("Freigaben") {
                 PermissionRow(title: "Bedienungshilfen", detail: "Fenster in Arbeitsbereichen anordnen",
                               granted: WorkspaceManager.hasAccessibility) { WorkspaceManager.requestAccessibility() }
-                PermissionRow(title: "Festplattenvollzugriff", detail: "Safari-Lesezeichen und Browserverlauf lesen",
-                              granted: !SafariBookmarks.shared.accessDenied) { SafariBookmarks.openFullDiskAccessSettings() }
+                if Edition.readsOtherAppsData {
+                    PermissionRow(title: "Festplattenvollzugriff", detail: "Safari-Lesezeichen und Browserverlauf lesen",
+                                  granted: !SafariBookmarks.shared.accessDenied) { SafariBookmarks.openFullDiskAccessSettings() }
+                }
                 PermissionRow(title: "Bildschirmaufnahme", detail: "Bildschirmvideos mit Systemton aufnehmen",
                               granted: screenCaptureAccess) {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
@@ -333,7 +335,7 @@ private struct ProgramToWidgetDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         guard let provider = info.itemProviders(for: [.fileURL]).first else { return false }
         let insertAfter = info.location.y >= 16
-        provider.loadObject(ofClass: URL.self) { url, _ in
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
             guard let url, url.isFileURL, url.pathExtension.lowercased() == "app" else {
                 DispatchQueue.main.async { highlightedRow = nil }
                 return
@@ -889,14 +891,6 @@ struct WorkspaceEditor: View {
                 }
                 Toggle("Beim Überfahren in der Leiste aufrollen", isOn: Binding(get: { ws.showOnHover ?? true },
                                                                               set: { ws.showOnHover = $0 }))
-                Toggle("macOS-Dock auf diese Apps umstellen", isOn: $ws.setNativeDock)
-                if ws.setNativeDock || NativeDock.hasBackup {
-                    HStack {
-                        Text("Vor der ersten Änderung wird dein Dock gesichert.").font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Ursprüngliches Dock wiederherstellen") { NativeDock.restore() }.disabled(!NativeDock.hasBackup)
-                    }
-                }
             }
         }
         .formStyle(.grouped)

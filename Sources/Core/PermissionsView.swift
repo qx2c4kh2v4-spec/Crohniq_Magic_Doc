@@ -1,3 +1,4 @@
+import Combine
 import AppKit
 import ApplicationServices
 import Contacts
@@ -42,6 +43,11 @@ enum PermissionStatus: Equatable {
 
 enum PermissionKind: String, CaseIterable, Identifiable {
     case accessibility, fullDisk, automation, signalKey, calendar, reminders, contacts, photos, location, notifications, screenRecording
+
+    /// The permissions this edition uses: Full Disk Access and the Signal key only serve the full edition's chat and history lists.
+    static var available: [PermissionKind] {
+        Edition.readsOtherAppsData ? allCases : allCases.filter { $0 != .fullDisk && $0 != .signalKey }
+    }
 
     var id: String { rawValue }
 
@@ -135,26 +141,45 @@ enum PermissionKind: String, CaseIterable, Identifiable {
     }
 }
 
+/// Keeps one CLLocationManager alive so its authorization status is reported reliably
+/// (a throwaway manager reports `.notDetermined` even after access was granted).
+final class LocationAuthProbe: NSObject, CLLocationManagerDelegate {
+    static let shared = LocationAuthProbe()
+    private let manager = CLLocationManager()
+    var onChange: (() -> Void)?
+    override init() { super.init(); manager.delegate = self }
+    var status: CLAuthorizationStatus { manager.authorizationStatus }
+    func request() { manager.requestWhenInUseAuthorization() }
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        DispatchQueue.main.async { [weak self] in self?.onChange?() }
+    }
+}
+
 @MainActor
 final class PermissionCenter: ObservableObject {
     static let shared = PermissionCenter()
 
     @Published private(set) var status: [PermissionKind: PermissionStatus] = [:]
     @Published var signalError: String?
-    private var locationManager: CLLocationManager?
+
+    private init() {
+        LocationAuthProbe.shared.onChange = { [weak self] in self?.refresh() }
+    }
 
     func refresh() {
         var s: [PermissionKind: PermissionStatus] = [:]
         s[.accessibility] = AXIsProcessTrusted() ? .granted : .missing
-        s[.fullDisk] = Self.hasFullDiskAccess() ? .granted : .missing
-        s[.signalKey] = NSWorkspace.shared.urlForApplication(withBundleIdentifier: SignalChats.bundleID) == nil
-            ? .notInstalled : (SignalChats.hasKey ? .granted : (signalError == nil ? .unknown : .missing))
+        if Edition.readsOtherAppsData {
+            s[.fullDisk] = Self.hasFullDiskAccess() ? .granted : .missing
+            s[.signalKey] = NSWorkspace.shared.urlForApplication(withBundleIdentifier: SignalChats.bundleID) == nil
+                ? .notInstalled : (SignalChats.hasKey ? .granted : (signalError == nil ? .unknown : .missing))
+        }
         s[.calendar] = EKEventStore.authorizationStatus(for: .event) == .fullAccess ? .granted : .missing
         s[.reminders] = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess ? .granted : .missing
         s[.contacts] = CNContactStore.authorizationStatus(for: .contacts) == .authorized ? .granted : .missing
         let photos = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         s[.photos] = photos == .authorized || photos == .limited ? .granted : .missing
-        let location = CLLocationManager().authorizationStatus
+        let location = LocationAuthProbe.shared.status
         s[.location] = location == .authorizedAlways || location == .authorized ? .granted : .missing
         s[.screenRecording] = CGPreflightScreenCaptureAccess() ? .granted : .missing
         s[.automation] = status[.automation] ?? .unknown
@@ -173,7 +198,7 @@ final class PermissionCenter: ObservableObject {
 
     func status(of kind: PermissionKind) -> PermissionStatus { status[kind] ?? .unknown }
 
-    var relevant: [PermissionKind] { PermissionKind.allCases.filter { status(of: $0) != .notInstalled } }
+    var relevant: [PermissionKind] { PermissionKind.available.filter { status(of: $0) != .notInstalled } }
     var grantedCount: Int { relevant.filter { status(of: $0) == .granted }.count }
 
     /// Asks macOS for the permission where an app can ask; otherwise opens the matching settings page.
@@ -217,10 +242,9 @@ final class PermissionCenter: ObservableObject {
                 PHPhotoLibrary.requestAuthorization(for: .readWrite) { _ in Task { @MainActor in self.refresh() } }
             } else { openSettings(kind) }
         case .location:
-            let manager = CLLocationManager()
-            if manager.authorizationStatus == .notDetermined {
-                locationManager = manager
-                manager.requestWhenInUseAuthorization()
+            if LocationAuthProbe.shared.status == .notDetermined {
+                NSApp.activate(ignoringOtherApps: true)
+                LocationAuthProbe.shared.request()
             } else { openSettings(kind) }
         case .notifications:
             UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -287,11 +311,22 @@ struct PermissionsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                if restartHint {
+                    Button { center.relaunch() } label: {
+                        Label("Schon freigegeben, aber hier nicht grün? Bedienungshilfen und Bildschirmaufnahme erkennt macOS erst nach einem Neustart – hier klicken.",
+                              systemImage: "arrow.clockwise.circle.fill")
+                            .font(.callout)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.orange.opacity(0.14)))
+                }
                 if guided { guide } else { startCard }
                 VStack(spacing: 0) {
-                    ForEach(PermissionKind.allCases) { kind in
+                    ForEach(PermissionKind.available) { kind in
                         row(kind)
-                        if kind != PermissionKind.allCases.last { Divider().padding(.leading, 52) }
+                        if kind != PermissionKind.available.last { Divider().padding(.leading, 52) }
                     }
                 }
                 .padding(.vertical, 4)
@@ -323,6 +358,12 @@ struct PermissionsView: View {
 
     private var openSteps: [PermissionKind] {
         center.relevant.filter { center.status(of: $0) != .granted && !skipped.contains($0) }
+    }
+
+    /// Shown while a restart-only permission is still missing (macOS detects it only after relaunch).
+    private var restartHint: Bool {
+        [PermissionKind.accessibility, .screenRecording, .fullDisk]
+            .contains { center.relevant.contains($0) && center.status(of: $0) != .granted }
     }
 
     private var startCard: some View {

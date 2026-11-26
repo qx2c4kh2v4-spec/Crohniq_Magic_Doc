@@ -8,11 +8,27 @@ import UserNotifications
 @main
 struct CrohniqDockApp {
     static func main() {
+        migrateDefaults()
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
         app.setActivationPolicy(.accessory)
         app.run()
+    }
+
+    /// The bundle ID changed from `ch.crohniq.dock` to `crohniq.dock.ch` (the App Store Connect record).
+    /// On the first launch under the new ID, carry the old settings over once.
+    private static func migrateDefaults() {
+        let legacyID = "ch.crohniq.dock"
+        let defaults = UserDefaults.standard
+        guard Bundle.main.bundleIdentifier != legacyID,
+              !defaults.bool(forKey: "migratedFromLegacyBundleID") else { return }
+        if let old = defaults.persistentDomain(forName: legacyID) {
+            for (key, value) in old where defaults.object(forKey: key) == nil {
+                defaults.set(value, forKey: key)
+            }
+        }
+        defaults.set(true, forKey: "migratedFromLegacyBundleID")
     }
 }
 
@@ -44,6 +60,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             return
         }
+        // Developer check: render the welcome page offscreen to a PNG and quit.
+        if let i = CommandLine.arguments.firstIndex(of: "--render-unlock"), CommandLine.arguments.count > i + 1 {
+            let path = CommandLine.arguments[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                let r = ImageRenderer(content: UnlockView(highlight: .calendar) {})
+                r.scale = 2
+                if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                   let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: path))
+                }
+                NSApp.terminate(nil)
+            }
+            return
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-help"), CommandLine.arguments.count > i + 1 {
+            let path = CommandLine.arguments[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                let r = ImageRenderer(content: HelpSetupView {})
+                r.scale = 2
+                if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                   let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: path))
+                }
+                NSApp.terminate(nil)
+            }
+            return
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-welcome"), CommandLine.arguments.count > i + 1 {
+            let path = CommandLine.arguments[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                let r = ImageRenderer(content: WelcomeView {})
+                r.scale = 2
+                if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                   let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: path))
+                }
+                NSApp.terminate(nil)
+            }
+            return
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--make-codes") {
+            let n = CommandLine.arguments.count > i + 1 ? Int(CommandLine.arguments[i + 1]) ?? 10 : 10
+            Activation.batch(count: n).forEach { print($0) }
+            exit(0)
+        }
+        _ = LocationService.shared
         _ = LocationService.shared
         ClipboardHistory.shared.start()
         ShortcutsScheduler.shared.start()
@@ -57,6 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         dock.show()
         updateHotKey()
+        if Welcome.showAtLaunch { Welcome.show() }
+        PromoBubble.shared.start()
         DockStore.shared.$settings.map(\.hotkey).removeDuplicates().sink { [weak self] _ in
             DispatchQueue.main.async { self?.updateHotKey() }
         }.store(in: &bag)
@@ -138,10 +202,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         permissions.target = self
         menu.addItem(permissions)
 
+        let welcome = NSMenuItem(title: "Willkommen & Giveaway …", action: #selector(openWelcomeAction), keyEquivalent: "")
+        welcome.target = self
+        menu.addItem(welcome)
+
+        let help = NSMenuItem(title: "Einrichtung & Hilfe …", action: #selector(openHelpAction), keyEquivalent: "")
+        help.target = self
+        menu.addItem(help)
+
+        let dockGuide = NSMenuItem(title: "Dein Dock verstehen …", action: #selector(openDockGuideAction), keyEquivalent: "")
+        dockGuide.target = self
+        menu.addItem(dockGuide)
+
+        if !Entitlements.shared.unlocked {
+            let unlock = NSMenuItem(title: "Alle Funktionen freischalten …", action: #selector(openUnlockAction), keyEquivalent: "")
+            unlock.image = NSImage(systemSymbolName: "lock.open.fill", accessibilityDescription: nil)
+            unlock.target = self
+            menu.addItem(unlock)
+        }
+
         let login = NSMenuItem(title: "Bei Anmeldung starten", action: #selector(toggleLogin), keyEquivalent: "")
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         login.target = self
         menu.addItem(login)
+
+        #if DEBUG
+        let sim = NSMenuItem(title: "Entwickler: Sperre simulieren", action: #selector(toggleSimulateLockAction), keyEquivalent: "")
+        sim.target = self
+        sim.state = Entitlements.shared.simulatingLock ? .on : .off
+        menu.addItem(sim)
+        #endif
 
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Crohniq Dock beenden", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -188,6 +278,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func openSettingsAction() { openSettings() }
     @objc func openPermissionsAction() { openSettings(page: .permissions) }
+    @objc func openWelcomeAction() { Welcome.show() }
+    @objc func openHelpAction() { HelpSetup.show() }
+    @objc func openDockGuideAction() { DockGuide.show() }
+    @objc func openUnlockAction() { AddonUnlock.show() }
+    #if DEBUG
+    @objc func toggleSimulateLockAction() { MainActor.assumeIsolated { Entitlements.shared.toggleSimulateLock() } }
+    #endif
 
     func openSettings(page: SettingsPage? = nil, selecting id: UUID? = nil) {
         if let id { DockStore.shared.editingWidgetID = id; SettingsNav.shared.page = .widgets }

@@ -1,3 +1,4 @@
+#if FULL_EDITION
 import AppKit
 import CommonCrypto
 import Security
@@ -323,3 +324,12 @@ private extension Data {
         self.init(bytes)
     }
 }
+#else
+enum SignalChats {
+    static let bundleID = "org.whispersystems.signal-desktop"
+    static var hasKey: Bool { false }
+    static func requestAccess() -> String? { nil }
+    static func load(limit: Int = 12) -> (chats: [WhatsAppChat], error: String?) { ([], nil) }
+    static func messages(of chat: WhatsAppChat, limit: Int = 60) -> (messages: [WhatsAppMessage], error: String?) { ([], nil) }
+}
+#endif

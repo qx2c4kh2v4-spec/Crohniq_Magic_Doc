@@ -89,7 +89,6 @@ struct Workspace: Codable, Identifiable, Equatable {
     var symbol: String = "rectangle.3.group"
     var apps: [WorkspaceApp] = []
     var others: OthersPolicy = .hide
-    var setNativeDock = false
     var dockProfileID: UUID?
     /// Unroll the app list when hovering this workspace in the bar.
     var showOnHover: Bool?
@@ -106,7 +105,7 @@ final class WorkspaceManager: ObservableObject {
 
     private let key = "workspaces.v1"
     /// Never quit these when switching.
-    private let protected: Set<String> = ["com.apple.finder", "ch.crohniq.dock", "com.apple.systempreferences"]
+    private let protected: Set<String> = ["com.apple.finder", "ch.crohniq.dock", "crohniq.dock.ch", "com.apple.systempreferences"]
 
     private init() {
         if let d = UserDefaults.standard.data(forKey: key), let w = try? JSONDecoder().decode([Workspace].self, from: d) {
@@ -148,7 +147,6 @@ final class WorkspaceManager: ObservableObject {
         if let p = ws.dockProfileID, DockStore.shared.profiles.contains(where: { $0.id == p }) {
             DockStore.shared.switchProfile(p)
         }
-        if ws.setNativeDock { NativeDock.set(apps: ws.apps.map(\.path)) }
 
         let wanted = Set(ws.apps.compactMap(\.bundleID))
         if ws.others != .keep {
@@ -430,48 +428,6 @@ final class WorkspaceManager: ObservableObject {
                 item.screen = idx
             }
             return item
-        }
-    }
-}
-
-// MARK: - Native macOS Dock
-
-enum NativeDock {
-    static var backupURL: URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Crohniq Dock", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("dock-backup.plist")
-    }
-
-    static var hasBackup: Bool { FileManager.default.fileExists(atPath: backupURL.path) }
-
-    static func backupIfNeeded() {
-        guard !hasBackup else { return }
-        Shell.run("/usr/bin/defaults", ["export", "com.apple.dock", backupURL.path])
-    }
-
-    static func set(apps: [String]) {
-        backupIfNeeded()
-        let tiles: [[String: Any]] = apps.map { path in
-            let url = URL(fileURLWithPath: path)
-            var tile: [String: Any] = [
-                "file-data": ["_CFURLString": url.absoluteString, "_CFURLStringType": 15],
-                "file-label": url.deletingPathExtension().lastPathComponent,
-            ]
-            if let bid = Bundle(path: path)?.bundleIdentifier { tile["bundle-identifier"] = bid }
-            return ["tile-data": tile, "tile-type": "file-tile"]
-        }
-        CFPreferencesSetValue("persistent-apps" as CFString, tiles as CFArray, "com.apple.dock" as CFString,
-                              kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-        CFPreferencesSynchronize("com.apple.dock" as CFString, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-        Shell.runAsync("/usr/bin/killall", ["Dock"])
-    }
-
-    static func restore() {
-        guard hasBackup else { return }
-        Shell.runAsync("/usr/bin/defaults", ["import", "com.apple.dock", backupURL.path]) { _ in
-            Shell.runAsync("/usr/bin/killall", ["Dock"])
         }
     }
 }

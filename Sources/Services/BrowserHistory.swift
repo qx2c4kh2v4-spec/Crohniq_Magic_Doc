@@ -7,6 +7,7 @@ struct BrowserVisit: Identifiable {
     var id: String { "\(url.absoluteString)|\(visitedAt.timeIntervalSince1970)" }
 }
 
+#if FULL_EDITION
 enum BrowserHistory {
     static func load(bundleID: String, limit: Int = 10) -> (visits: [BrowserVisit], error: String?) {
         let database: URL
@@ -131,3 +132,8 @@ enum BrowserHistory {
             .first
     }
 }
+#else
+enum BrowserHistory {
+    static func load(bundleID: String, limit: Int = 10) -> (visits: [BrowserVisit], error: String?) { ([], nil) }
+}
+#endif

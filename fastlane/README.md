@@ -55,6 +55,14 @@ Release-App nach build/release bauen
 
 build/release-App nach /Applications kopieren und neu starten
 
+### mac create_app
+
+```sh
+[bundle exec] fastlane mac create_app
+```
+
+App einmalig im Developer Portal und in App Store Connect anlegen
+
 ### mac release
 
 ```sh

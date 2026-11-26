@@ -9,6 +9,7 @@
 #   fastlane mac bump       Build-Nummer in project.yml um 1 erhöhen
 #   fastlane mac install    build/release-App nach /Applications kopieren und neu starten
 #   fastlane mac release    bump + archive + install (Optionen: bump:false install:false)
+#   fastlane mac create_app App einmalig in App Store Connect anlegen (SKU crohniq.dock.sku.ch)
 
 default_platform(:mac)
 
@@ -17,6 +18,7 @@ PROJECT_YML = File.join(ROOT, "project.yml")
 PROJECT     = File.join(ROOT, "CrohniqDock.xcodeproj")
 SCHEME      = "CrohniqDock"
 APP_NAME    = "Crohniq Dock"
+SKU         = "crohniq.dock.sku.ch"
 OUTPUT_DIR  = File.join(ROOT, "build", "release")
 DERIVED     = File.join(ROOT, "build", "DerivedData")
 
@@ -86,6 +88,18 @@ platform :mac do
     sh("ditto", source, target)
     sh("open", target)
     UI.success("#{target} installiert und gestartet")
+  end
+
+  desc "App einmalig im Developer Portal und in App Store Connect anlegen"
+  lane :create_app do
+    create_app_online(
+      platform: "osx",
+      app_identifier: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
+      app_name: APP_NAME,
+      sku: SKU,
+      language: "German",
+      app_version: marketing_version
+    )
   end
 
   desc "Build-Nummer erhöhen, Release bauen und installieren"

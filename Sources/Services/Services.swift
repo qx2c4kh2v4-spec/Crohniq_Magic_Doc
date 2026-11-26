@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import AVFoundation
 import Combine
+import MapKit
 import CoreAudio
 import AudioToolbox
 import CoreLocation
@@ -369,8 +370,10 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     func placeName(for loc: CLLocation) async -> String? {
         let key = String(format: "%.2f,%.2f", loc.coordinate.latitude, loc.coordinate.longitude)
         if let n = names[key] ?? UserDefaults.standard.string(forKey: "location.name.\(key)") { return n }
-        let marks = try? await CLGeocoder().reverseGeocodeLocation(loc, preferredLocale: AppLanguageSettings.shared.locale)
-        let n = marks?.first.flatMap { $0.locality ?? $0.subAdministrativeArea ?? $0.name }
+        guard let request = MKReverseGeocodingRequest(location: loc) else { return nil }
+        request.preferredLocale = AppLanguageSettings.shared.locale
+        let item = try? await request.mapItems.first
+        let n = item.flatMap { $0.addressRepresentations?.cityName ?? $0.name }
         if let n { names[key] = n; UserDefaults.standard.set(n, forKey: "location.name.\(key)") }
         return n
     }
@@ -499,9 +502,9 @@ final class NowPlaying: ObservableObject {
         if app == "Spotify" {
             Script.run("tell application \"Spotify\" to return artwork url of current track") { [weak self] r in
                 guard let s = r?.stringValue, let url = URL(string: s) else { self?.artwork = nil; return }
-                Task {
+                Task { @MainActor [weak self] in
                     let img = (try? await URLSession.shared.data(from: url)).flatMap { NSImage(data: $0.0) }
-                    await MainActor.run { self?.artwork = img }
+                    self?.artwork = img
                 }
             }
         } else {

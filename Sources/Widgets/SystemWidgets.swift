@@ -1036,7 +1036,6 @@ struct PanoramasHoverList: View {
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
         NSGraphicsContext.current?.imageInterpolation = .high
 
-        let target = NSRect(x: 0, y: 0, width: width, height: height)
         let sourceSize = source.size
         let scale = max(CGFloat(width) / max(sourceSize.width, 1),
                         CGFloat(height) / max(sourceSize.height, 1))

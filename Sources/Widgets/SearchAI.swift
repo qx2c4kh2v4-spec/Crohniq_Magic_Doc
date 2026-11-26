@@ -153,7 +153,7 @@ enum SearchEngine: String, CaseIterable, Identifiable {
 /// General questions answered on-device by Apple Intelligence.
 @MainActor
 final class GeneralAI: ObservableObject {
-    struct Turn: Identifiable, Codable { let id = UUID(); let question: String; var answer = ""; var failed = false }
+    struct Turn: Identifiable, Codable { var id = UUID(); let question: String; var answer = ""; var failed = false }
     static let shared = GeneralAI()
 
     @Published var turns: [Turn] = []

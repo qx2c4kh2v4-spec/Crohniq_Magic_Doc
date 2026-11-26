@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import Foundation
 
@@ -192,7 +193,8 @@ final class GitHubService: ObservableObject {
                 st.followers = j["followers"] as? Int ?? 0
                 st.repos = j["public_repos"] as? Int ?? 0
             }
-            await MainActor.run { self.stats[user] = st }
+            let result = st
+            await MainActor.run { self.stats[user] = result }
         }
     }
 }
@@ -759,7 +761,7 @@ final class ShortcutsScheduler {
         guard timer == nil else { return }
         ShortcutsCatalog.shared.refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            self?.checkDueShortcuts()
+            MainActor.assumeIsolated { self?.checkDueShortcuts() }
         }
         checkDueShortcuts()
     }

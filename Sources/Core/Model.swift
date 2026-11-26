@@ -161,7 +161,7 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
         case .apps, .appSwitcher, .bookmarks, .fileShelf, .downloads, .finder, .dropbox, .shortcuts, .search, .nexus, .workspaces, .launcher, .trash: .apps
         case .clock, .quitApps, .pomodoro, .timer, .focus, .appleIntelligence, .claudeAsk, .chatGPTAsk, .water, .calendar, .reminders, .progress, .stopwatch, .mail: .productivity
         case .weather, .nowPlaying, .battery, .cpu, .memory, .disk, .cpuGraph, .toggles, .audio,
-             .clipboard, .screenshots, .voiceMemo, .emoji, .photos, .panoramas, .quitApps: .system
+             .clipboard, .screenshots, .voiceMemo, .emoji, .photos, .panoramas: .system
         case .notes, .colorPicker, .converter: .utility
         case .github, .developerUsage, .metric: .business
         }
@@ -306,17 +306,21 @@ enum WidgetKind: String, Codable, CaseIterable, Identifiable {
              ConfigField(key: "interval", label: "Hintergrund wechseln alle … Sekunden (0 = kein Wechsel)", kind: .number,
                          help: "0 = Stillstand, das Bild bleibt. Empfohlen: 300 Sekunden (5 Minuten). Minimum: 30 Sekunden.")]
         case .bookmarks:
-            [ConfigField(key: "source", label: "Quelle", kind: .choice([("safari", "Safari-Lesezeichen"), ("custom", "Eigene Liste")])),
-             ConfigField(key: "folder", label: "Safari-Ordner auf der Kachel", placeholder: "leer = Favoritenleiste",
-                         help: "Safari braucht Festplattenvollzugriff (Systemeinstellungen › Datenschutz & Sicherheit). Das ▾ zeigt immer alle Ordner."),
-             ConfigField(key: "items", label: "Eigene Liste (Name|URL pro Zeile)", kind: .multiline)]
+            Edition.readsOtherAppsData
+            ? [ConfigField(key: "source", label: "Quelle", kind: .choice([("safari", "Safari-Lesezeichen"), ("custom", "Eigene Liste")])),
+               ConfigField(key: "folder", label: "Safari-Ordner auf der Kachel", placeholder: "leer = Favoritenleiste",
+                           help: "Safari braucht Festplattenvollzugriff (Systemeinstellungen › Datenschutz & Sicherheit). Das ▾ zeigt immer alle Ordner."),
+               ConfigField(key: "items", label: "Eigene Liste (Name|URL pro Zeile)", kind: .multiline)]
+            : [ConfigField(key: "items", label: "Lesezeichen (Name|URL pro Zeile)", kind: .multiline)]
         case .launcher:
             [ConfigField(key: "fileCount", label: "Standard-Dateiverlauf je App", kind: .number,
                          help: "Voreinstellung für Apps ohne eigene Anzahl (1–50)."),
-             ConfigField(key: "safariView", label: "Safari zeigt", kind: .choice([("history", "Verlauf"), ("favorites", "Favoriten")])),
+             Edition.readsOtherAppsData
+                ? ConfigField(key: "safariView", label: "Safari zeigt", kind: .choice([("history", "Verlauf"), ("favorites", "Favoriten")]))
+                : nil,
              ConfigField(key: "forkLiftMode", label: "ForkLift-Klick", kind: .choice([("app", "App sofort öffnen"), ("folder", "Dateien aus Verzeichnis anzeigen")])),
              ConfigField(key: "forkLiftFolder", label: "ForkLift-Verzeichnis", kind: .directory,
-                         help: "Wird im Dateien-Modus verwendet.")]
+                         help: "Wird im Dateien-Modus verwendet.")].compactMap { $0 }
         case .mail:
             [ConfigField(key: "mailFilter", label: "Mails anzeigen", kind: .choice([
                 ("unread", "Nur neue (ungelesene)"),
@@ -715,16 +719,16 @@ final class DockStore: ObservableObject {
                 save()
             }
         } else {
+            // Default layout for a fresh install: free widgets only, so nothing shows a lock out of the box.
             let main = DockProfile(name: "Standard", widgets: [
-                WidgetInstance(.clock), WidgetInstance(.weather), WidgetInstance(.nexus),
+                WidgetInstance(.clock), WidgetInstance(.weather), WidgetInstance(.nowPlaying),
                 WidgetInstance(.workspaces), WidgetInstance(.bookmarks), WidgetInstance(.launcher),
-                WidgetInstance(Hardware.hasBattery ? .battery : .cpu), WidgetInstance(.calendar), WidgetInstance(.nowPlaying),
-                WidgetInstance(.audio), WidgetInstance(.clipboard), WidgetInstance(.screenshots), WidgetInstance(.shortcuts),
-                WidgetInstance(.finder), WidgetInstance(.mail), WidgetInstance(.photos), WidgetInstance(.trash),
+                WidgetInstance(Hardware.hasBattery ? .battery : .cpu), WidgetInstance(.audio),
+                WidgetInstance(.finder), WidgetInstance(.shortcuts), WidgetInstance(.notes), WidgetInstance(.trash),
             ])
             let focus = DockProfile(name: "Fokus", widgets: [
-                WidgetInstance(.clock), WidgetInstance(.pomodoro), WidgetInstance(.reminders),
-                WidgetInstance(.water), WidgetInstance(.progress),
+                WidgetInstance(.clock), WidgetInstance(.pomodoro), WidgetInstance(.timer),
+                WidgetInstance(.stopwatch), WidgetInstance(.toggles),
             ])
             profiles = [main, focus]
             activeProfileID = main.id
@@ -888,6 +892,8 @@ final class DockStore: ObservableObject {
     var barPadding: CGFloat { max(2, (chrome * 0.05).rounded()) }
     var corner: CGFloat { unit * 0.26 }
     var grip: CGFloat { max(8, (chrome * 0.19).rounded()) }
+    /// Width (horizontal) / height (vertical) reserved for the Free/Premium badge at the edge.
+    var badgeSize: CGFloat { (38 * dockScale).rounded() }
     var vertical: Bool { settings.position.isVertical || (settings.position == .free && settings.freeVertical == true) }
 
     func width(for units: Int) -> CGFloat {
@@ -943,11 +949,12 @@ final class DockStore: ObservableObject {
         let tiles = activeWidgets.isEmpty
             ? [CGSize(width: unit, height: unit)]
             : activeWidgets.map { tileSize(for: $0) }
+        // The layout starts with the Free/Premium badge and the grip, each followed by a gap.
         if vertical {
-            let height = tiles.map(\.height).reduce(0, +) + CGFloat(tiles.count) * gap + grip
+            let height = tiles.map(\.height).reduce(0, +) + CGFloat(tiles.count) * gap + grip + badgeSize + gap
             return CGSize(width: tiles.map(\.width).max() ?? unit, height: height)
         }
-        let width = tiles.map(\.width).reduce(0, +) + CGFloat(tiles.count) * gap + grip
+        let width = tiles.map(\.width).reduce(0, +) + CGFloat(tiles.count) * gap + grip + badgeSize + gap
         return CGSize(width: width, height: tiles.map(\.height).max() ?? unit)
     }
 

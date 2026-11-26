@@ -5,7 +5,8 @@ enum Messenger: Equatable {
     case whatsapp, signal
 
     static func of(bundleID: String?) -> Messenger? {
-        switch bundleID {
+        guard Edition.readsOtherAppsData else { return nil }
+        return switch bundleID {
         case WhatsAppChats.bundleID: .whatsapp
         case SignalChats.bundleID: .signal
         default: nil
@@ -76,6 +77,7 @@ struct WhatsAppMessage: Identifiable {
 }
 
 /// Reads the most recent chats from WhatsApp for Mac (read-only, from a snapshot of its SQLite store).
+#if FULL_EDITION
 enum WhatsAppChats {
     static let bundleID = "net.whatsapp.WhatsApp"
 
@@ -226,3 +228,10 @@ enum WhatsAppChats {
         }
     }
 }
+#else
+enum WhatsAppChats {
+    static let bundleID = "net.whatsapp.WhatsApp"
+    static func load(limit: Int = 12) -> (chats: [WhatsAppChat], error: String?) { ([], nil) }
+    static func messages(of chat: WhatsAppChat, limit: Int = 60) -> (messages: [WhatsAppMessage], error: String?) { ([], nil) }
+}
+#endif

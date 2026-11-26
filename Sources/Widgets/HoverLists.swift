@@ -854,6 +854,7 @@ struct LauncherHoverList: View {
     private var pinned: [String] { DockStore.shared.instance(w.id)?.pinnedFiles(for: app) ?? w.pinnedFiles(for: app) }
     private var appName: String { FileManager.default.displayName(atPath: appPath).replacingOccurrences(of: ".app", with: "") }
     private var browserBundleID: String? {
+        guard Edition.readsOtherAppsData else { return nil }
         let bundleID = Bundle(path: appPath)?.bundleIdentifier
         return ["com.apple.Safari", "org.mozilla.firefox"].contains(bundleID ?? "") ? bundleID : nil
     }
@@ -945,7 +946,7 @@ struct LauncherHoverList: View {
                         }
                         Divider()
                     }
-                    if let messenger {
+                    if messenger != nil {
                         Text("LETZTE CHATS").font(.caption.weight(.bold)).foregroundStyle(Theme.secondary)
                         if !loaded {
                             ProgressView().controlSize(.small)

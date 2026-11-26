@@ -248,7 +248,12 @@ struct WidgetCatalogBrowser: View {
                         Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "plus.circle.fill").foregroundStyle(Color.accentColor)
+                    if item.kind.isPremium && !Entitlements.shared.unlocked {
+                        Image(systemName: "lock.fill").foregroundStyle(.orange)
+                            .help("Add-on-Funktion – nach dem Freischalten voll nutzbar")
+                    } else {
+                        Image(systemName: "plus.circle.fill").foregroundStyle(Color.accentColor)
+                    }
                 }
             }
             .padding(10)
