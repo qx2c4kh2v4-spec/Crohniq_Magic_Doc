@@ -55,14 +55,6 @@ Release-App nach build/release bauen
 
 build/release-App nach /Applications kopieren und neu starten
 
-### mac create_app
-
-```sh
-[bundle exec] fastlane mac create_app
-```
-
-App einmalig im Developer Portal und in App Store Connect anlegen
-
 ### mac release
 
 ```sh
@@ -70,6 +62,54 @@ App einmalig im Developer Portal und in App Store Connect anlegen
 ```
 
 Build-Nummer erhöhen, Release bauen und installieren
+
+### mac developer_id
+
+```sh
+[bundle exec] fastlane mac developer_id
+```
+
+Release mit Developer-ID-Signatur nach build/developer-id exportieren
+
+### mac notarize_app
+
+```sh
+[bundle exec] fastlane mac notarize_app
+```
+
+App notarisieren und Ticket anheften
+
+### mac dmg
+
+```sh
+[bundle exec] fastlane mac dmg
+```
+
+Signiertes, notarisiertes DMG nach build/dist bauen
+
+### mac github_release
+
+```sh
+[bundle exec] fastlane mac github_release
+```
+
+DMG als GitHub-Release veröffentlichen (Tag v<Version>-<Build>)
+
+### mac upload_metadata
+
+```sh
+[bundle exec] fastlane mac upload_metadata
+```
+
+Texte und Screenshots aus fastlane/metadata und fastlane/screenshots nach App Store Connect hochladen
+
+### mac distribute
+
+```sh
+[bundle exec] fastlane mac distribute
+```
+
+Build-Nummer erhöhen, mit Developer ID bauen, notarisieren und DMG erstellen
 
 ----
 

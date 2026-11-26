@@ -1,6 +1,6 @@
 Everything you reach for all day now lives where your eyes already go: your Dock.
 
-Crohniq Dock is a glass widget bar for macOS. It sits gracefully above your Dock, blends into your desktop and shows you what matters right now – your next meeting, the weather, the song that's playing and the chats waiting for you.
+Crohniq Dock is a glass widget bar for macOS. It sits gracefully above your Dock, blends into your desktop and shows you what matters right now – your next meeting, the weather and the song that's playing.
 
 YOUR DAY, AT A GLANCE
 • Calendar and Reminders – next event, daily agenda, check off tasks in place
@@ -27,12 +27,12 @@ ASK WITHOUT SWITCHING APPS
 Ask Apple Intelligence right from the bar – or send your question to Claude or ChatGPT with a single keystroke.
 
 LISTS THAT UNFOLD
-Hover over a widget and it unrolls: recent documents, latest WhatsApp and Signal chats, copied items, recently played songs. One click and you're there.
+Hover over a widget and it unrolls: recent documents, copied items, recently played songs, an app's windows. One click and you're there.
 
 MADE FOR YOUR STYLE
 Pick from more than 50 widgets, organize them into profiles, and tune size, spacing, opacity and glass tint. Photos and panorama wallpapers from your library make the bar truly yours.
 
 PRIVATE BY DESIGN
-Crohniq Dock reads your calendar, mail and chats only on your Mac and never sends them anywhere. A permissions assistant explains every access before you grant it – and you can revoke any of them at any time.
+Crohniq Dock reads your calendar and mail only on your Mac and never sends them anywhere. A permissions assistant explains every access before you grant it – and you can revoke any of them at any time.
 
 Crohniq Dock. Search less, do more.
