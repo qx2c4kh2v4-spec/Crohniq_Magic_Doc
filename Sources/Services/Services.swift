@@ -515,11 +515,12 @@ final class NowPlaying: ObservableObject {
     }
 
     func command(_ cmd: String) {
-        guard let app = player ?? activePlayer() else {
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Music.app"))
-            return
+        // Default to Music when nothing is running. AppleScript launches it in the background and plays –
+        // it does not bring the app to the front (that only happens with `activate`).
+        let app = player ?? activePlayer() ?? "Music"
+        Script.run("tell application \"\(app)\" to \(cmd)") { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self?.poll() }
         }
-        Script.run("tell application \"\(app)\" to \(cmd)") { [weak self] _ in self?.poll() }
     }
 
     func openPlayer() {
