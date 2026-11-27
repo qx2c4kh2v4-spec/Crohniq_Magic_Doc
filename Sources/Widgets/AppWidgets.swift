@@ -406,7 +406,7 @@ struct AppSwitcherWidget: View {
                         if app.isActive { Circle().fill(Theme.fg).frame(width: 4 * s, height: 4 * s).offset(y: 6 * s) }
                     }
                     .help(app.localizedName ?? "")
-                    .onTapGesture { app.activate() }
+                    .onTapGesture { RunningApps.shared.bringToFront(app) }
                     .contextMenu {
                         Button("Ausblenden") { app.hide() }
                         Button("Beenden") { app.terminate() }

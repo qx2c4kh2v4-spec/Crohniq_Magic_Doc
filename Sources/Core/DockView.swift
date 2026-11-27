@@ -155,19 +155,15 @@ private struct RunningAppsHeader: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 4 * s) {
                     ForEach(running.apps, id: \.processIdentifier) { app in
-                        Menu {
-                            RunningAppActions(app: app)
-                        } label: {
-                            Image(nsImage: app.icon ?? NSImage())
-                                .resizable()
-                                .frame(width: 18 * s, height: 18 * s)
-                        }
-                        .menuStyle(.button)
-                        .buttonStyle(.plain)
-                        .menuIndicator(.hidden)
-                        .fixedSize()
-                        .help("\(app.localizedName ?? "App"): beenden oder als Widget an einen Arbeitsbereich hängen")
-                        .accessibilityLabel("\(app.localizedName ?? "App") beenden")
+                        Image(nsImage: app.icon ?? NSImage())
+                            .resizable()
+                            .frame(width: 18 * s, height: 18 * s)
+                            .contentShape(Rectangle())
+                            .onTapGesture { running.bringToFront(app) }
+                            .contextMenu { RunningAppActions(app: app) }
+                            .help("\(app.localizedName ?? "App"): klicken holt die App nach vorne, Rechtsklick zum Beenden oder als Widget anhängen")
+                            .accessibilityLabel("\(app.localizedName ?? "App") nach vorne holen")
+                            .accessibilityAddTraits(.isButton)
                     }
                 }
             }

@@ -21,6 +21,18 @@ final class RunningApps: ObservableObject {
             .sorted { ($0.localizedName ?? "").localizedCaseInsensitiveCompare($1.localizedName ?? "") == .orderedAscending }
     }
 
+    /// Brings a running app to the front like a click in the system Dock: unhides it and, via a reopen,
+    /// restores a minimised window or opens a new one if the app has none.
+    func bringToFront(_ app: NSRunningApplication) {
+        if app.isHidden { app.unhide() }
+        guard let url = app.bundleURL else { app.activate(); return }
+        let cfg = NSWorkspace.OpenConfiguration()
+        cfg.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, error in
+            if error != nil { DispatchQueue.main.async { app.activate() } }
+        }
+    }
+
     func quit(_ list: [NSRunningApplication], force: Bool) {
         for app in list {
             if force { app.forceTerminate() } else { app.terminate() }
@@ -47,7 +59,7 @@ struct RunningAppActions: View {
         Button("Sofort beenden") { running.quit([app], force: true) }
         Divider()
         Button("Ausblenden") { app.hide() }
-        Button("Nach vorne holen") { app.activate() }
+        Button("Nach vorne holen") { running.bringToFront(app) }
         Divider()
         if workspaces.workspaces.isEmpty {
             Button("Arbeitsbereich anlegen …") { AppDelegate.shared.openSettings(page: .workspaces) }
@@ -94,13 +106,11 @@ struct QuitAppsWidget: View {
 
             if w.size >= 2 {
                 ForEach(running.apps.prefix(w.size * 2 - 2), id: \.processIdentifier) { app in
-                    Menu {
-                        RunningAppActions(app: app)
-                    } label: {
-                        Image(nsImage: app.icon ?? NSImage()).resizable().frame(width: 32 * s, height: 32 * s)
-                    }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-                    .help("\(app.localizedName ?? "") – klicken zum Beenden")
+                    Image(nsImage: app.icon ?? NSImage()).resizable().frame(width: 32 * s, height: 32 * s)
+                        .contentShape(Rectangle())
+                        .onTapGesture { running.bringToFront(app) }
+                        .contextMenu { RunningAppActions(app: app) }
+                        .help("\(app.localizedName ?? ""): klicken holt die App nach vorne, Rechtsklick zum Beenden")
                 }
                 Spacer(minLength: 0)
             }
